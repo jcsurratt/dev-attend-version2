@@ -2,11 +2,13 @@
 
 Dev Attend is a classroom attendance application.
 
-Its main purpose is to help manage a student roster and support attendance workflows through a web app. It also includes a camera-based face recognition feature that can be used for student registration and attendance tracking.
+It is built to help a student development team understand and extend a real web application that manages rosters, supports attendance workflows, and includes a camera-based face recognition feature for registration and attendance tracking.
+
+The backend uses FastAPI, student and attendance data live in PostgreSQL, and face embeddings are stored locally in a file-based face database.
 
 ## What The App Does
 
-This project gives you a simple attendance system with:
+The project currently includes:
 
 - a home page that explains the system
 - a teacher dashboard
@@ -15,7 +17,7 @@ This project gives you a simple attendance system with:
 - a camera page for face-based registration and recognition
 - a connection to a PostgreSQL database for student data
 
-In simple terms, this app is meant to help an instructor:
+In practice, the app is meant to help an instructor:
 
 - keep a list of students
 - look up student names
@@ -25,9 +27,9 @@ In simple terms, this app is meant to help an instructor:
 
 ## Main Parts Of The App
 
-There are two big sides to the project:
+When you are learning or contributing to the project, it helps to think of it in two main parts:
 
-### 1. The pages people see in the browser
+### 1. The browser-based interface
 
 These include:
 
@@ -39,15 +41,16 @@ These include:
 
 These pages are built from HTML, CSS, and JavaScript files inside `pythonServer/studentUI/`.
 
-### 2. The backend that does the work
+### 2. The backend application
 
-The backend:
+The backend is responsible for:
 
-- starts the application
-- reads settings from `.env`
-- connects to PostgreSQL
-- responds to API requests
-- handles face-recognition logic
+- starting the application
+- reading settings from `.env`
+- connecting to PostgreSQL
+- responding to API requests
+- handling face-recognition logic
+- caching model files locally in `.torch-cache`
 
 The backend code lives in `pythonServer/`.
 
@@ -106,7 +109,10 @@ dev-attend2/
       navbar.js
   .env
   .env.example
+  .torch-cache/
   requirements.txt
+  topology-diagram.md
+  adding a new feature.md
   walkthrough.md
   refactor.md
 ```
@@ -130,9 +136,11 @@ If you want a more detailed beginner-friendly explanation, read:
 
 This project uses PostgreSQL.
 
-Right now, the app successfully connects to PostgreSQL and the student-related routes are working.
+The app is designed to connect to PostgreSQL for roster and attendance data.
 
 The app expects database connection values in `.env`.
+
+These PostgreSQL settings are required. The app does not fall back to hardcoded database credentials in source code.
 
 Important values:
 
@@ -146,9 +154,13 @@ Optional value:
 
 - `FACE_DB_PATH`
 
+The face-recognition model weights are cached locally in `.torch-cache/` after they are downloaded. That directory is only for local runtime use and should not be committed to GitHub.
+
 ## Environment File
 
 Create a `.env` file in the project root. You can start from `.env.example`.
+
+If a required PostgreSQL value is missing or blank, the app will fail at startup with a clear configuration error.
 
 Example:
 
@@ -163,9 +175,11 @@ FACE_DB_PATH=face_db.pkl
 
 ## Local Setup
 
+These steps are written for a student team working from their own development environments. The exact shell behavior may vary a little from machine to machine, but the overall workflow should stay the same.
+
 This project uses a Python virtual environment.
 
-On this machine, the safest way to use it is to call the virtual environment's Python directly instead of relying on shell activation.
+For consistency across a student team, it is usually best to call the virtual environment's Python directly instead of depending on shell activation behavior.
 
 ### 1. Create the virtual environment
 
@@ -179,7 +193,7 @@ py -3.9 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-If activation does not work on your machine, that is okay. You can still run everything by calling `.\.venv\Scripts\python.exe` directly.
+If activation is not available or behaves differently in your shell, you can still run everything by calling `.\.venv\Scripts\python.exe` directly.
 
 ### 3. Install dependencies
 
@@ -193,7 +207,7 @@ If activation does not work on your machine, that is okay. You can still run eve
 .\.venv\Scripts\python.exe -m uvicorn pythonServer.main:app --reload
 ```
 
-Then open:
+After the server starts, open:
 
 - `http://127.0.0.1:8000`
 
@@ -218,13 +232,15 @@ Then open:
 - `/registerStudent`
 - `/delTempFace`
 
-## Important Notes
+## Team Notes
 
 - Google authentication has been removed from this version.
-- The app does not require login right now.
+- The app does not require login in its current form.
 - Face data is still stored in a file-based face database.
+- Face-recognition model files are cached locally in `.torch-cache`.
 - Student and roster information comes from PostgreSQL.
 - The attendance endpoint depends on the correct attendance table existing in PostgreSQL.
+- For team work, keep secrets in `.env`, keep local caches out of Git, and document any new feature flow you add.
 
 ## Documents In This Repo
 
@@ -232,9 +248,11 @@ Helpful files:
 
 - `walkthrough.md` for an easy explanation of how the code works
 - `refactor.md` for the refactor plan and design direction
+- `topology-diagram.md` for a visual architecture overview
+- `adding a new feature.md` for step-by-step feature planning guidance
 
 ## Summary
 
 Dev Attend is a classroom attendance web app.
 
-It is designed to help manage students, support attendance workflows, and provide a camera-based face recognition feature. The project now has a cleaner backend structure, a simpler setup process, and a PostgreSQL-based data connection with no login required in the current version.
+It is a good team project for learning how frontend code, API routes, SQL, configuration, and face-recognition workflows fit together in one application. The project has a clear backend structure, a straightforward setup process, and documentation to help new contributors understand both the architecture and the feature-development workflow.
