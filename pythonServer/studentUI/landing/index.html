@@ -1,0 +1,60 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Attendance System</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/"
+        ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
+      /></a>
+      <div class="navbar-time" id="current-time"></div>
+      <div class="header-text">
+        <h1>Attendance System</h1>
+      </div>
+    </header>
+
+    <div id="auth-section">
+      <a href="/teacher"><button>Open Dashboard</button></a>
+      <a href="/roster"><button>Manage Roster</button></a>
+      <a href="/camera"><button>Open Camera</button></a>
+    </div>
+
+    <hr />
+
+    <div id="features">
+      <div id="loggedOutView">
+        <h2>Welcome!</h2>
+        <p>
+          This system uses facial recognition to automatically track
+          attendance.
+        </p>
+
+        <p>Real-time face recognition</p>
+        <p>Automatic attendance marking</p>
+        <p>Attendance tracking for instructors</p>
+        <p>Use the dashboard, roster, and camera tools from the links above.</p>
+      </div>
+    </div>
+
+    <footer>
+      <p>Attendance System © 2026</p>
+    </footer>
+
+    <script src="/static/landing/app.js"></script>
+
+    <script>
+      function updateTime() {
+        const now = new Date()
+        document.getElementById("current-time").textContent =
+          now.toLocaleString()
+      }
+
+      setInterval(updateTime, 1000)
+      updateTime()
+    </script>
+  </body>
+</html>

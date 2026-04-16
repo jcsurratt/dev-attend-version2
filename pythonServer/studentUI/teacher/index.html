@@ -1,0 +1,60 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Instructor Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/"
+        ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
+      /></a>
+      <div class="navbar-time" id="current-time"></div>
+      <div class="header-text">
+        <h1>Attendance System</h1>
+        <nav id="main-nav">
+          <div class="nav-links" id="nav-links"></div>
+          <div class="nav-auth" id="nav-auth"></div>
+        </nav>
+        <script src="/static/navbar.js"></script>
+      </div>
+    </header>
+
+    <div>
+      <h2>Attendance Dashboard</h2>
+
+      <p>Manage students</p>
+      <p>View the attendance sheet</p>
+      <p>Use the camera registration flow</p>
+
+      <br />
+
+      <a href="/roster">
+        <button>Manage Roster</button>
+      </a>
+      <a href="/attendance">
+        <button>View Attendance</button>
+      </a>
+      <a href="/camera">
+        <button>Open Camera</button>
+      </a>
+    </div>
+
+    <footer>
+      <p>Attendance System © 2026</p>
+    </footer>
+
+    <script>
+      function updateTime() {
+        const now = new Date()
+        document.getElementById("current-time").textContent =
+          now.toLocaleString()
+      }
+
+      setInterval(updateTime, 1000)
+      updateTime()
+    </script>
+  </body>
+</html>

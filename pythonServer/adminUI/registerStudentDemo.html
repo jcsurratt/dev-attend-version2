@@ -1,0 +1,58 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<script src="/jsGlobals/libloader.js"></script>
+<script src="/jsGlobals/allfuncs.js"></script>
+<script src="/jsGlobals/log.js"></script>
+<body>
+  click to select image to upload
+</body>
+<script>
+  const a = loadlib("allfuncs")
+  ;(async () => {
+    while (1) {
+      await a.waitforclick()
+      const fileHandle = await (
+        await a.getfiles(false, false, ["jpg", "png", "jpeg", "webp"])
+      ).getFile()
+      const imageBuffer = await a.readfile(fileHandle, "ArrayBuffer")
+
+      log(imageBuffer)
+
+      // 3. FIX: Convert ArrayBuffer to a Blob
+      // We use the original file type (e.g., 'image/jpeg') from the handle
+      const imageBlob = new Blob([imageBuffer], {
+        type: fileHandle.type,
+      })
+
+      const formData = new FormData()
+      formData.append(
+        "name",
+        prompt("name", "John Doe") || "John Doe",
+      )
+
+      // 4. Append the Blob. The third argument is the filename.
+      formData.append("image_file", imageBlob, fileHandle.name)
+      document.body.textContent = "request sent"
+      fetch("/registerStudent", {
+        method: "POST",
+        body: formData,
+      })
+        .then((response) => response.json())
+        .then((data) =>
+          console.log(
+            (document.body.textContent = JSON.stringify(
+              data,
+              null,
+              2,
+            )),
+          ),
+        )
+        .catch((err) =>
+          console.error(
+            (document.body.textContent =
+              "Upload failed: " + err.message),
+          ),
+        )
+    }
+  })()
+</script>

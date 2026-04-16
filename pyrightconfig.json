@@ -1,0 +1,4 @@
+{
+  "reportCallInDefaultInitializer": "none",
+  "reportArgumentType": "none"
+}

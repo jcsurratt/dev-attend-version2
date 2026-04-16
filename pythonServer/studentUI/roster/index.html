@@ -1,0 +1,51 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Attendance Sheet</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/"><img id="logo" src="/static/logo.webp" alt="NRCC Logo" /></a>
+      <div class="navbar-time" id="current-time"></div>
+      <div class="header-text">
+        <h1>Attendance System</h1>
+        <nav id="main-nav">
+          <div class="nav-links" id="nav-links"></div>
+          <div class="nav-auth" id="nav-auth"></div>
+        </nav>
+        <script src="/static/navbar.js"></script>
+      </div>
+    </header>
+    <div id="col">
+        <input
+          type="text"
+          name="fname"
+          id="fname"
+          placeholder="student first name"
+        />
+        <input
+          type="text"
+          name="lname"
+          id="lname"
+          placeholder="student last name"
+        />
+        <button id="addNewStudent">add new student</button>
+      </div>
+      <div id="row">
+        <input type="checkbox" id="toggleShowDisabled" />
+        <label for="toggleShowDisabled"
+          >show unregistered students only</label
+        >
+      </div>
+    </div>
+    <div id="main"></div>
+    <br />
+    <a href="/"><button>Go Home</button></a>
+    <script src="/jsGlobals/libloader.js"></script>
+    <script src="/jsGlobals/allfuncs.js"></script>
+    <script src="/static/roster/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Attendance Sheet</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/"
+        ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
+      /></a>
+      <div class="navbar-time" id="current-time"></div>
+      <div class="header-text">
+        <h1>Attendance System</h1>
+        <nav id="main-nav">
+          <div class="nav-links" id="nav-links"></div>
+          <div class="nav-auth" id="nav-auth"></div>
+        </nav>
+        <script src="/static/navbar.js"></script>
+      </div>
+    </header>
+
+    <div>
+      <label>Class:</label>
+      <select id="classSelect"></select>
+      <input
+        type="text"
+        id="newClassInput"
+        placeholder="New class name"
+      />
+      <button onclick="addClass()">Add Class</button>
+      <button onclick="removeClass()">Remove Class</button>
+    </div>
+
+    <div>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search students..."
+        onkeyup="searchStudents()"
+      />
+    </div>
+
+    <div>
+      <input
+        type="text"
+        id="newStudentInput"
+        placeholder="Student name"
+      />
+      <button onclick="addStudent()">Add Student</button>
+    </div>
+
+    <div id="students"></div>
+
+    <br />
+    <a href="/camera"><button>Go to Camera</button></a>
+    <a href="/"><button>Go Home</button></a>
+
+    <script src="/static/attendance/app.js"></script>
+  </body>
+</html>

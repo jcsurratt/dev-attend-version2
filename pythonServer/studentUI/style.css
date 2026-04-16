@@ -1,0 +1,592 @@
+/* 1. The "Magic" fix for system UI elements */
+html {
+  color-scheme: dark;
+}
+
+:root {
+  --bg-color: #121212;
+  --surface-color: #1e1e1e;
+  --text-primary: #e0e0e0;
+  --accent-color: #2765eb; /* Purple */
+  --accent-secondary: #0025e0; /* Teal */
+  --border-color: #333333;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0;
+  padding: 1rem; /* Reduced from 2rem */
+}
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+
+  /* Use 'px' for absolute control to prevent scaling issues */
+  width: 18px;
+  height: 18px;
+
+  /* CRITICAL: Prevents stretching in Flex/Grid layouts */
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 0.2s;
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+/* The Checkmark */
+input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background-color: #000; /* Visible check color */
+  transform: scale(0);
+  transition: 100ms transform ease-in-out;
+
+  /* The shape of the check */
+  clip-path: polygon(
+    14% 44%,
+    0 65%,
+    50% 100%,
+    100% 16%,
+    80% 0%,
+    43% 62%
+  );
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+/* --- Compact Base Elements --- */
+input,
+textarea,
+select,
+button {
+  background-color: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+button {
+  background-color: var(--accent-color);
+  color: #000;
+  font-weight: 600;
+  padding: 0.3rem 0.4rem;
+  border: none;
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3 {
+  margin: 1rem 0 0.5rem 0;
+}
+
+code {
+  padding: 0.1rem 0.3rem;
+  background: var(--surface-color);
+}
+
+/* 2. Target the specific arrows (Spin Buttons) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  /* This forces the browser to use a dark-themed version of the arrows */
+  filter: invert(1) brightness(0.8);
+  cursor: pointer;
+}
+
+/* 3. Ensure the input itself looks compact and dark */
+input[type="number"] {
+  background-color: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.3rem 0.5rem; /* Compact padding */
+  border-radius: 4px;
+}
+:root {
+  color-scheme: light dark;
+}
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 20px;
+  background-color: light-dark(#f4f6f8, #3b3c3d);
+  /* NRCC-inspired palette */
+  --primary: #003366;
+  --secondary: #005a8d;
+  --accent: #05bbf8;
+  --button: #4bcaf5;
+  --bg-light: #f5f7fa;
+  --bg-dark: #1e1f21;
+  --text-light: #ffffff;
+  --text-dark: #1a1a1a;
+  --card-bg: #ffffff;
+  --border: #dcdfe3;
+  --gray: #6b7280;
+}
+
+/* =====================
+   BASE
+===================== */
+body {
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  text-align: center;
+  padding: 20px;
+  margin: 0;
+  background-color: light-dark(var(--bg-light), var(--bg-dark));
+  color: light-dark(var(--text-dark), var(--text-light));
+}
+
+/* =====================
+   HEADER (UPDATED)
+===================== */
+header {
+  background: var(--primary);
+  color: white;
+  padding: 15px 20px;
+  margin: -20px -20px 30px -20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  justify-content: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+@media (max-width: 970px) {
+  header {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #logo {
+    height: 80px; /* optional smaller logo */
+  }
+
+  h1 {
+    font-size: 1.6rem;
+  }
+
+  header .header-text {
+    transform: none;
+  }
+}
+
+/* Logo image */
+#logo {
+  height: 100px;
+  width: auto;
+  justify-items: flex-start;
+  flex-shrink: 0;
+}
+
+/* Title next to logo */
+.header-text {
+  min-width: 0px;
+  flex: 1 1 auto;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+.right-padding {
+  flex-grow: 2;
+}
+
+h1 {
+  margin: 0;
+  color: white;
+  font-size: 2rem;
+}
+
+#current-time {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--border);
+}
+#faceIdWrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 4 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+#faceIdCircle {
+  z-index: 400 !important;
+}
+
+.navbar-time#current-time {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.9rem;
+  color: var(--border);
+}
+
+/* =====================
+   CAMERA
+===================== */
+#camera-container {
+  position: relative;
+  width: 630px;
+  height: 472px;
+  margin: 25px auto;
+  background: var(--text-dark);
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--border);
+}
+
+#cameraVideo,
+#overlayCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#cameraVideo {
+  z-index: 1;
+  object-fit: cover;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+#overlayCanvas {
+  z-index: 2;
+  pointer-events: none;
+  background: transparent;
+}
+
+#captureCanvas {
+  display: none;
+}
+
+/* =====================
+   INPUTS / BUTTONS
+===================== */
+input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  transition: border 0.2s;
+}
+
+input:focus {
+  border-color: var(--primary);
+}
+
+button:disabled,
+button:disabled:hover {
+  background: color-mix(
+    in oklab,
+    var(--primary) 70%,
+    rgb(95, 95, 95) 30%
+  );
+}
+button {
+  cursor: pointer;
+  position: relative;
+  z-index: 10;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  font-weight: 500;
+  transition:
+    background 0.2s,
+    transform 0.1s;
+}
+
+button:hover {
+  background: var(--button);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* =====================
+   STUDENTS CARD
+===================== */
+#students {
+  max-width: 520px;
+  margin: 20px auto;
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border);
+}
+
+.student {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.student:hover {
+  background-color: rgba(0, 51, 102, 0.05);
+}
+
+/* Status colors (more refined) */
+.present {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.tardy {
+  color: #ed6c02;
+  font-weight: 600;
+}
+
+.absent {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.timestamp {
+  margin-left: 10px;
+  font-size: 0.85em;
+  color: var(--gray);
+}
+
+#students {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.student:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+/* =====================
+   ADD STUDENT
+===================== */
+#add-student {
+  margin-bottom: 25px;
+}
+
+/* =====================
+   FOOTER
+===================== */
+footer {
+  margin-top: 40px;
+  font-size: 0.85em;
+  color: var(--gray);
+}
+
+/* =====================
+   INPUTS
+===================== */
+
+.attendanceInput input,
+select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  outline: none;
+  font-size: 0.95rem;
+
+  background: inherit; /* slightly darker than card */
+  color: inherit;
+
+  transition: all 0.2s ease;
+}
+
+/* Focus state */
+.attendanceInput input:focus,
+select:focus {
+  border-color: var(--primary);
+  background: inherit; /* subtle darker on focus */
+  box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.18);
+}
+
+/* Placeholder */
+input::placeholder {
+  color: var(--gray);
+}
+
+/* Spacing */
+input,
+select {
+  margin: 5px;
+}
+
+/* Search input size */
+#searchInput {
+  width: 260px;
+  max-width: 90%;
+}
+
+/* Dropdown cursor */
+select {
+  cursor: pointer;
+}
+
+#classSelect {
+  color: var(--bg-dark);
+}
+
+#students {
+  background-color: var(--bg-dark);
+  color: var(--text-light);
+  border: none;
+  visibility: hidden;
+}
+
+#students:has {
+  visibility: visible;
+}
+
+body {
+  #main.showDisabled {
+    .container:has(button.button:disabled) {
+      display: none;
+    }
+  }
+  #main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    .container {
+      display: flex;
+      flex-direction: row;
+      padding: 10px;
+      gap: 10px;
+      align-content: center;
+      a {
+        text-decoration: none;
+        button.button {
+          height: 25px;
+          display: flex;
+          align-items: center;
+          text-decoration: none;
+        }
+      }
+      .name {
+        height: 25px;
+        line-height: 25px;
+      }
+    }
+  }
+}
+
+/* =====================
+   NAVBAR
+===================== */
+#main-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  height: 50px;
+  background: transparent;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.nav-logo {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-light);
+  letter-spacing: 0.05em;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nav-link-wrap a {
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 0.4rem 0.85rem;
+  border-radius: 5px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.nav-link-wrap a:visited {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.nav-link-wrap a:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-light);
+}
+
+.nav-link-wrap a.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+.nav-auth {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-nav-logout,
+.btn-nav-login {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.9rem;
+  background: var(--accent);
+  color: var(--text-light);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.btn-nav-logout:hover,
+.btn-nav-login:hover {
+  background: var(--button);
+}
+
+#main-nav {
+  background: transparent;
+  box-shadow: none;
+  position: static;
+  justify-content: center;
+  height: auto;
+  padding: 8px 0 4px 0;
+}
+
+#classSelect {
+  color: var(--gray);
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<script src="/static/live.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Camera - Attendance</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/"
+        ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
+      /></a>
+      <div class="navbar-time" id="current-time"></div>
+      <div class="header-text">
+        <h1>Attendance System</h1>
+        <nav id="main-nav">
+          <div class="nav-links" id="nav-links"></div>
+          <div class="nav-auth" id="nav-auth"></div>
+        </nav>
+        <script src="/static/navbar.js"></script>
+      </div>
+    </header>
+    <div id="camera-screen">
+      <!-- CAMERA SCREEN -->
+      <h1 id="camera-header"></h1>
+      <h2>Look at the camera.</h2>
+
+      <!-- Local camera feed with overlay canvas -->
+      <div id="camera-container">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <canvas id="overlayCanvas" width="400" height="300"></canvas>
+        <div id="faceIdWrap">
+          <canvas id="faceIdCircle" width="180" height="180"></canvas>
+        </div>
+      </div>
+
+      <!-- Face ID circle (visible during registration) -->
+
+      <small id="recognitionStatus">Starting camera...</small>
+      <h3 id="recognitionHeader"></h3>
+    </div>
+
+    <br /><br />
+    <a href="/"><button>Go Home</button></a>
+
+    <script src="/static/camera/app.js"></script>
+  </body>
+</html>
