@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>Camera - Attendance</title>
-    <link rel="stylesheet" href="/static/style.css?v=wrap-logo-aspect-20260418" />
+    <link rel="stylesheet" href="/static/style.css?v=scanning-instruction-label-20260418" />
   </head>
   <body>
     <header>
@@ -26,7 +26,7 @@
       <h1 id="camera-header"></h1>
       <h2>Look at the camera.</h2>
       <div id="camera-class-picker">
-        <label for="cameraClassSelect">Current class:</label>
+        <label for="cameraClassSelect">Assign a class for the new student:</label>
         <select id="cameraClassSelect"></select>
       </div>
 
@@ -41,12 +41,15 @@
 
       <!-- Face ID circle (visible during registration) -->
 
+      <p id="scanningInstruction" hidden>
+        The site is scanning your face. Turn your head in a circular motion for the camera.
+      </p>
       <h3 id="recognitionHeader"></h3>
     </div>
 
     <br /><br />
     <a href="/"><button>Go Home</button></a>
 
-    <script src="/static/camera/app.js?v=yellow-scanning-registration-20260418"></script>
+    <script src="/static/camera/app.js?v=scanning-instruction-label-20260418"></script>
   </body>
 </html>

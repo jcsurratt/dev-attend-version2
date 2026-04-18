@@ -226,8 +226,13 @@ async function updateStudentName(id, fname, lname, container) {
 
   container.dataset.fname = data.fname
   container.dataset.lname = data.lname
+  container.dataset.nameEdited = "true"
   container.querySelector(".name").textContent = data.fullName
   return true
+}
+
+function isAutomaticNewStudentName(fname, lname) {
+  return fname === "New" && /^Student\s+\d+$/.test(lname || "")
 }
 
 function createStudentClassSelect(id, selectedClass, container) {
@@ -313,18 +318,19 @@ function createDeleteButton(id, container) {
 function showNameEditor(id, container) {
   const editor = container.querySelector(".student-name-editor")
   editor.innerHTML = ""
+  const shouldPrefillName = container.dataset.nameEdited === "true"
 
   const firstNameInput = a.newelem("input", {
     class: "student-name-input",
     type: "text",
-    value: container.dataset.fname || "",
-    placeholder: "Student First Name",
+    value: shouldPrefillName ? container.dataset.fname || "" : "",
+    placeholder: "First Name",
   })
   const lastNameInput = a.newelem("input", {
     class: "student-name-input",
     type: "text",
-    value: container.dataset.lname || "",
-    placeholder: "Student Last Name",
+    value: shouldPrefillName ? container.dataset.lname || "" : "",
+    placeholder: "Last Name",
   })
   const saveButton = a.newelem(
     "button",
@@ -363,6 +369,7 @@ function newNode(fname, lname, id, studentRegistered, className = "All Students"
       class: "container",
       "data-fname": fname,
       "data-lname": lname,
+      "data-name-edited": isAutomaticNewStudentName(fname, lname) ? "false" : "true",
     },
     [
       a.newelem("span", { class: "name" }, [fname, " ", lname]),

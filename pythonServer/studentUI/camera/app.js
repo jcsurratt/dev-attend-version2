@@ -34,6 +34,7 @@ const faceIdCanvas = document.getElementById("faceIdCircle")
 const faceIdWrap = document.getElementById("faceIdWrap")
 const classSelect = document.getElementById("cameraClassSelect")
 const headerEl = document.getElementById("recognitionHeader")
+const scanningInstructionEl = document.getElementById("scanningInstruction")
 
 const captureCtx = captureCanvas.getContext("2d", {
   willReadFrequently: true,
@@ -54,6 +55,11 @@ async function startCamera() {
 
 function setCameraMessage(message) {
   headerEl.textContent = message
+}
+
+function setScanningInstructionVisible(isVisible) {
+  if (!scanningInstructionEl) return
+  scanningInstructionEl.hidden = !isVisible
 }
 
 function showRecognitionFailure(message) {
@@ -172,6 +178,7 @@ async function loadClassOptions() {
 function drawOverlay() {
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
   const width = overlayCanvas.width
+  let hasScanningFace = false
 
   for (const face of lastFaces) {
     const [rawX1, y1, rawX2, y2] = face.box
@@ -180,6 +187,7 @@ function drawOverlay() {
     const centerX = x1 + (x2 - x1) / 2
     const centerY = y1 + (y2 - y1) / 2
     const scanning = registerState && face.name === "Unknown"
+    hasScanningFace = hasScanningFace || scanning
     const known = face.name !== "Unknown"
     const color =
       scanning ? "#ffd400"
@@ -215,6 +223,7 @@ function drawOverlay() {
     overlayCtx.fillText(text, textX, textY)
   }
 
+  setScanningInstructionVisible(hasScanningFace)
   requestAnimationFrame(drawOverlay)
 }
 
