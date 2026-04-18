@@ -389,8 +389,18 @@ function isAllStudentsClass(className) {
   return !className || className === "All Students"
 }
 
+function getSelectedAttendanceClassName() {
+  return classSelect?.value === ALL_STUDENTS ? "All Students" : classSelect?.value || "All Students"
+}
+
 function getAssignClassBeforeAttendanceMessage(name) {
   return `${name} is not yet associated with a class. Assign them a class in the roster.`
+}
+
+function getWrongSelectedClassMessage(face) {
+  const selectedClass = getSelectedAttendanceClassName()
+  const studentClass = face.class_name || "All Students"
+  return `${face.name} was recognized, but attendance was not marked. The dropdown is set to ${selectedClass}, which is not this student's class. Select ${studentClass} to mark attendance.`
 }
 
 async function saveAttendance(face) {
@@ -401,6 +411,10 @@ async function saveAttendance(face) {
   }
   if (isAllStudentsClass(face.class_name)) {
     setCameraMessage(getAssignClassBeforeAttendanceMessage(name))
+    return null
+  }
+  if (getSelectedAttendanceClassName() !== face.class_name) {
+    setCameraMessage(getWrongSelectedClassMessage(face))
     return null
   }
 
@@ -464,6 +478,13 @@ async function autoMarkPresent(face) {
     isRecognized = false
     recognizedStudentName = ""
     recognizedAttendanceMessage = getAssignClassBeforeAttendanceMessage(name)
+    setCameraMessage(recognizedAttendanceMessage)
+    return
+  }
+  if (getSelectedAttendanceClassName() !== face.class_name) {
+    isRecognized = false
+    recognizedStudentName = ""
+    recognizedAttendanceMessage = getWrongSelectedClassMessage(face)
     setCameraMessage(recognizedAttendanceMessage)
     return
   }
