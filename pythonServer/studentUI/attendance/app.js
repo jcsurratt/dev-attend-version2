@@ -4,6 +4,9 @@ const studentsDiv = document.getElementById("students")
 const classSelect = document.getElementById("classSelect")
 const classSearchInput = document.getElementById("classSearchInput")
 const classSearchResults = document.getElementById("classSearchResults")
+const ATTENDANCE_REFRESH_MS = 5000
+let studentRenderRequestId = 0
+let renderedStudentSignature = ""
 
 function getSelectedClass() {
   if (!classSelect.options.length) return ""
@@ -18,12 +21,12 @@ async function loadClasses(preferredClass = null) {
 
 function renderClassOptions(preferredClass = null) {
   const classSearch = classSearchInput.value.toLowerCase().trim()
-  const classes = availableClasses.filter((classOption) =>
+  const matchingClasses = availableClasses.filter((classOption) =>
     classOption.label.toLowerCase().includes(classSearch),
   )
   classSelect.innerHTML = ""
 
-  for (const classOption of classes) {
+  for (const classOption of availableClasses) {
     const option = document.createElement("option")
     option.value = classOption.value
     option.textContent = classOption.label
@@ -31,7 +34,7 @@ function renderClassOptions(preferredClass = null) {
   }
 
   if (!classSelect.options.length) {
-    renderClassSearchResults(classes, classSearch)
+    renderClassSearchResults(matchingClasses, classSearch)
     return
   }
 
@@ -42,7 +45,7 @@ function renderClassOptions(preferredClass = null) {
 
   classSelect.value = matchingClass
   currentClass = matchingClass
-  renderClassSearchResults(classes, classSearch)
+  renderClassSearchResults(matchingClasses, classSearch)
 }
 
 function renderClassSearchResults(classes, classSearch) {
@@ -97,25 +100,136 @@ function newElement(tagName, attrs = {}, children = []) {
   return element
 }
 
+function formatAttendanceLabel(attendance) {
+  if (!attendance || !attendance.status) return "Attendance:"
+  const status = attendance.status.charAt(0).toUpperCase() + attendance.status.slice(1)
+  const manual = attendance.manual_override ? " Manually Updated." : ""
+  return `Attendance: ${status}.${manual}`
+}
+
+function applyAttendanceDisplay(container, attendance) {
+  const label = container.querySelector(".attendance-status")
+  const select = container.querySelector(".attendance-status-select")
+  if (!label || !select) return
+  label.textContent = formatAttendanceLabel(attendance)
+  label.className = `attendance-status ${attendance?.status || "not-marked"}`
+  select.value = attendance?.status || "not_marked"
+  select.classList.toggle("not-marked", !attendance?.status)
+}
+
+async function updateStudentAttendance(student, container) {
+  const statusSelect = container.querySelector(".attendance-status-select")
+  const formData = new FormData()
+  formData.append("studentId", student.id)
+  formData.append("studentName", student.name)
+  formData.append("class_name", student.class_name || getSelectedClass() || "All Students")
+  formData.append("status", statusSelect.value)
+
+  const data = await (
+    await fetch("/api/attendance/updateStatus", {
+      method: "POST",
+      body: formData,
+    })
+  ).json()
+
+  if (data.status !== "success") {
+    alert(data.message || "Unable to update attendance.")
+    return
+  }
+
+  student.attendance = data.attendance
+  applyAttendanceDisplay(container, data.attendance)
+}
+
+function createAttendanceControl(student, container) {
+  if ((student.class_name || getSelectedClass()) === "All Students") {
+    return newElement("div", { class: "attendance-control" }, [
+      newElement("span", { class: "attendance-status not-marked" }, ["Attendance:"]),
+      newElement("span", { class: "attendance-na-label" }, ["N/A"]),
+    ])
+  }
+
+  const statusLabel = newElement("span", { class: "attendance-status" }, [])
+  const select = newElement("select", {
+    class: "attendance-status-select",
+    "aria-label": "Attendance Status",
+  }, [
+    newElement("option", { value: "not_marked", disabled: "disabled" }, ["Not Marked"]),
+    newElement("option", { value: "present" }, ["Present"]),
+    newElement("option", { value: "tardy" }, ["Tardy"]),
+    newElement("option", { value: "absent" }, ["Absent"]),
+  ])
+  select.addEventListener("change", () => updateStudentAttendance(student, container))
+
+  const control = newElement("div", { class: "attendance-control" }, [
+    statusLabel,
+    select,
+  ])
+  applyAttendanceDisplay(control, student.attendance)
+  return control
+}
+
+function updateExistingStudentRows(students) {
+  for (const student of students) {
+    const row = studentsDiv.querySelector(`[data-student-id="${student.id}"]`)
+    if (!row) continue
+
+    row.dataset.studentName = student.name
+    row.dataset.className = student.class_name || getSelectedClass()
+    row.querySelector(".attendance-student-name").textContent = student.name
+    applyAttendanceDisplay(row, student.attendance)
+
+    const classSelectControl = row.querySelector(".student-class-select")
+    if (classSelectControl && classSelectControl.value !== student.class_name) {
+      classSelectControl.value = student.class_name || getSelectedClass()
+    }
+  }
+  searchStudents()
+}
+
 async function renderStudents() {
-  studentsDiv.innerHTML = ""
+  const requestId = ++studentRenderRequestId
   const selectedClass = getSelectedClass()
   if (!selectedClass) return
   const encodedClass = encodeURIComponent(selectedClass)
   const students = await (
     await fetch(`/api/classStudents?class_name=${encodedClass}`)
   ).json()
+  if (requestId !== studentRenderRequestId) return
 
+  const nextSignature = JSON.stringify(
+    students.map((student) => [
+      student.id,
+      student.name,
+      student.class_name,
+    ]),
+  )
+  if (nextSignature === renderedStudentSignature) {
+    updateExistingStudentRows(students)
+    return
+  }
+  renderedStudentSignature = nextSignature
+
+  const fragment = document.createDocumentFragment()
   students.forEach((student) => {
-    const div = newElement("div", { class: "student attendance-student" }, [
+    const div = newElement("div", {
+      class: "student attendance-student",
+      "data-student-id": student.id,
+      "data-student-name": student.name,
+      "data-class-name": student.class_name || selectedClass,
+    }, [
       newElement("span", { class: "attendance-student-name" }, [student.name]),
+      newElement("div", { class: "student-attendance" }, []),
       newElement("div", { class: "student-class-control" }, [
-        newElement("span", { class: "class-change-label" }, ["Change Class"]),
+        newElement("span", { class: "class-change-label" }, ["Change Class:"]),
         createStudentClassSelect(student.id, student.class_name || selectedClass),
       ]),
     ])
-    studentsDiv.appendChild(div)
+    div.querySelector(".student-attendance").appendChild(createAttendanceControl(student, div))
+    fragment.appendChild(div)
   })
+  studentsDiv.replaceChildren(fragment)
+  searchStudents()
 }
 
 function createStudentClassSelect(studentId, selectedClass) {
@@ -153,68 +267,22 @@ async function updateStudentClass(studentId, className) {
 
   if (data.status !== "success") {
     alert(data.message || "Unable to update student class.")
+    renderedStudentSignature = ""
     await renderStudents()
     return
   }
 
   await loadClasses(currentClass)
-  await renderStudents()
-}
-
-window.addClass = async function () {
-  const input = document.getElementById("newClassInput")
-  const className = input.value.trim()
-  if (!className) return
-
-  const formData = new FormData()
-  formData.append("name", className)
-  const data = await (
-    await fetch("/api/classes", {
-      method: "POST",
-      body: formData,
-    })
-  ).json()
-
-  if (data.status !== "success") {
-    alert(data.message || "Unable to add class.")
-    return
-  }
-
-  input.value = ""
-  await loadClasses(className)
-  await renderStudents()
-}
-
-window.removeClass = async function () {
-  const className = getSelectedClass()
-  if (!className || className === "All Students") return
-
-  const formData = new FormData()
-  formData.append("name", className)
-  const data = await (
-    await fetch("/api/classes/remove", {
-      method: "POST",
-      body: formData,
-    })
-  ).json()
-
-  if (data.status !== "success") {
-    alert(data.message || "Unable to remove class.")
-    return
-  }
-
-  await loadClasses("All Students")
+  renderedStudentSignature = ""
   await renderStudents()
 }
 
 window.addStudent = async function () {
-  const input = document.getElementById("newStudentInput")
-  const fullName = input.value.trim()
-  if (!fullName) return
-
-  const parts = fullName.split(/\s+/)
-  const fname = parts.shift() || ""
-  const lname = parts.join(" ")
+  const firstNameInput = document.getElementById("newStudentFirstName")
+  const lastNameInput = document.getElementById("newStudentLastName")
+  const fname = firstNameInput.value.trim()
+  const lname = lastNameInput.value.trim()
+  if (!fname && !lname) return
 
   const formData = new FormData()
   formData.append("fname", fname)
@@ -233,7 +301,9 @@ window.addStudent = async function () {
     return
   }
 
-  input.value = ""
+  firstNameInput.value = ""
+  lastNameInput.value = ""
+  renderedStudentSignature = ""
   await renderStudents()
 }
 
@@ -247,15 +317,16 @@ window.searchStudents = function () {
 
 window.searchClasses = async function () {
   renderClassOptions(currentClass)
-  await renderStudents()
 }
 
 classSelect.addEventListener("change", async function () {
   currentClass = getSelectedClass()
+  renderedStudentSignature = ""
   await renderStudents()
 })
 
 ;(async () => {
   await loadClasses("All Students")
   await renderStudents()
+  setInterval(renderStudents, ATTENDANCE_REFRESH_MS)
 })()

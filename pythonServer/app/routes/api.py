@@ -5,14 +5,18 @@ from fastapi.responses import JSONResponse
 
 from pythonServer.app.repositories.attendance import (
   get_attendance_by_day,
+  get_today_attendance_map,
+  mark_absences_for_today,
+  mark_student_attendance,
   mark_student_present,
+  update_attendance_status,
 )
 from pythonServer.app.repositories.roster import (
   add_camera_student,
   add_class,
   add_student,
   delete_student,
-  get_available_classes,
+  get_available_class_details,
   get_student_name,
   get_student_name_map,
   get_students,
@@ -21,6 +25,7 @@ from pythonServer.app.repositories.roster import (
   ping,
   remove_class,
   student_exists,
+  update_class_schedule,
   update_student_class,
   update_student_name,
 )
@@ -148,21 +153,38 @@ def test_database():
 def get_roster_students(class_name: Optional[str] = None):
   if class_name is not None:
     return get_students_for_class(class_name)
-  return get_students(face_store.registered_ids())
+  mark_absences_for_today()
+  attendance_by_student = get_today_attendance_map()
+  students = get_students(face_store.registered_ids())
+  return [
+    (
+      fname,
+      lname,
+      student_id,
+      is_registered,
+      class_name,
+      attendance_by_student.get(str(student_id), {}),
+    )
+    for fname, lname, student_id, is_registered, class_name in students
+  ]
 
 
 @router.get("/api/classStudents")
 def get_class_students(class_name: str):
-  return get_students_for_class(class_name)
+  mark_absences_for_today()
+  attendance_by_student = get_today_attendance_map()
+  students = get_students_for_class(class_name)
+  for student in students:
+    student["attendance"] = attendance_by_student.get(str(student["id"]), {})
+  return students
 
 
 @router.get("/api/classes")
 def get_classes():
   try:
-    classes = get_available_classes()
+    options = get_available_class_details()
   except Exception:
-    classes = ["All Students"]
-  options = [{"label": class_name, "value": class_name} for class_name in classes]
+    options = [{"label": "All Students", "value": "All Students", "start_time": "", "end_time": "", "days_of_week": ""}]
   return {"classes": options}
 
 
@@ -180,6 +202,20 @@ def delete_class(name: str = Form(...)):
   try:
     remove_class(name)
     return {"status": "success", "name": name}
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+
+@router.post("/api/classes/schedule")
+def change_class_schedule(
+  name: str = Form(...),
+  start_time: Optional[str] = Form(default=None),
+  end_time: Optional[str] = Form(default=None),
+  days_of_week: str = Form(default=""),
+):
+  try:
+    class_info = update_class_schedule(name, start_time, end_time, days_of_week)
+    return {"status": "success", "class": class_info}
   except Exception as error:
     return {"status": "error", "message": str(error)}
 
@@ -251,9 +287,30 @@ def attendance_by_day(dayStart: str, dayEnd: str):
 
 
 @router.post("/api/attendance/markPresent")
-def mark_present(studentName: str = Form(...)):
+def mark_present(
+  studentName: str = Form(...),
+  studentId: Optional[str] = Form(default=None),
+  class_name: Optional[str] = Form(default=None),
+):
   try:
-    attendance = mark_student_present(studentName)
+    if studentId or class_name:
+      attendance = mark_student_attendance(studentName, studentId, class_name)
+    else:
+      attendance = mark_student_present(studentName)
+    return {"status": "success", "attendance": attendance}
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+
+@router.post("/api/attendance/updateStatus")
+def change_attendance_status(
+  studentId: str = Form(...),
+  studentName: str = Form(...),
+  class_name: str = Form(...),
+  status: str = Form(...),
+):
+  try:
+    attendance = update_attendance_status(studentId, studentName, class_name, status)
     return {"status": "success", "attendance": attendance}
   except Exception as error:
     return {"status": "error", "message": str(error)}

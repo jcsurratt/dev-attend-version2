@@ -3,15 +3,18 @@ Object.assign(window, console)
 
 const ALL_STUDENTS = "__all__"
 const CLASS_STORAGE_KEY = "cameraSelectedClass"
-const CIRCLE_SEGMENTS = 8
-const REGISTRATION_COUNTDOWN_SECONDS = 1
-const FRAME_DELAY_MS = 35
-const UNKNOWN_REGISTRATION_DELAY_MS = 1200
+const CIRCLE_SEGMENTS = 6
+const REGISTRATION_COUNTDOWN_SECONDS = 0
+const FRAME_DELAY_MS = 20
+const UNKNOWN_REGISTRATION_DELAY_MS = 450
+const KNOWN_FACE_REGISTRATION_COOLDOWN_MS = 10000
+const ATTENDANCE_STATUS_REFRESH_MS = 15000
 
 let currentClass = ALL_STUDENTS
 let lastFaces = []
 let isRecognized = false
 let recognizedStudentName = ""
+let recognizedAttendanceMessage = ""
 let segmentsFilled = new Set()
 let segmentBlobs = {}
 let registerState = null
@@ -23,9 +26,12 @@ let isSending = false
 let autoRegistrationStarted = false
 let pendingCameraStudent = null
 let unknownFaceDetectedAt = null
+let lastKnownFaceSeenAt = 0
+let cameraIsShuttingDown = false
 
 const attendanceWritesInFlight = new Set()
-const autoMarked = new Set()
+const autoMarked = new Map()
+const lastAttendanceByKey = new Map()
 
 const video = document.getElementById("cameraVideo")
 const captureCanvas = new OffscreenCanvas(400, 300)
@@ -46,11 +52,49 @@ async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: true,
   })
+  if (cameraIsShuttingDown) {
+    stream.getTracks().forEach((track) => track.stop())
+    return
+  }
   video.srcObject = stream
   if (!registerState) {
     headerEl.textContent = "Camera active. Looking for a face..."
   }
   sendFrame()
+}
+
+function stopCameraStream() {
+  const stream = video?.srcObject
+  if (!stream) return
+  stream.getTracks().forEach((track) => track.stop())
+  video.srcObject = null
+}
+
+function cancelCameraProcesses() {
+  cameraIsShuttingDown = true
+  registerState = null
+  registerStartTimer = null
+  registerFaces = []
+  registerId = null
+  pendingCameraStudent = null
+  autoRegistrationStarted = false
+  unknownFaceDetectedAt = null
+  lastFaces = []
+  isSending = false
+  setScanningInstructionVisible(false)
+  hideFaceIdCircle()
+  stopCameraStream()
+}
+
+function setupCameraExitLinks() {
+  document.querySelectorAll(".camera-nav-exit").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault()
+      const href = link.getAttribute("href")
+      cancelCameraProcesses()
+      window.location.href = href
+    })
+  })
 }
 
 function setCameraMessage(message) {
@@ -93,6 +137,8 @@ function formatList(items) {
 }
 
 function getRecognizedFaceMessage() {
+  if (recognizedAttendanceMessage) return recognizedAttendanceMessage
+
   const knownFaces = getKnownFaces()
   const count = knownFaces.length
   const studentWord = count === 1 ? "student" : "students"
@@ -121,7 +167,7 @@ function updateRecognitionHeader() {
   if (registerState) return
 
   if (isRecognized) {
-    setCameraMessage("Welcome, " + recognizedStudentName + "!")
+    setCameraMessage(recognizedAttendanceMessage || "Welcome, " + recognizedStudentName + "!")
   } else {
     setCameraMessage(`Recognizing students from ${getCurrentClassLabel()}.`)
   }
@@ -135,6 +181,7 @@ function setCurrentClass(value) {
   unknownFaceDetectedAt = null
   isRecognized = false
   recognizedStudentName = ""
+  recognizedAttendanceMessage = ""
   updateRecognitionHeader()
 }
 
@@ -149,14 +196,17 @@ async function loadClassOptions() {
     for (const option of options) {
       const node = document.createElement("option")
       node.value = option.value
-      node.textContent = option.label
+      node.textContent =
+        option.value === "All Students" ? "Default: All Students" : option.label
+      if (option.value === "All Students") node.classList.add("default-class-option")
       classSelect.appendChild(node)
     }
   } catch (error) {
     console.error("Unable to load classes:", error)
     const fallback = document.createElement("option")
     fallback.value = ALL_STUDENTS
-    fallback.textContent = "All Students"
+    fallback.textContent = "Default: All Students"
+    fallback.classList.add("default-class-option")
     classSelect.appendChild(fallback)
   }
 
@@ -282,7 +332,7 @@ function directionToSegment(dx, dy) {
 
 function startRegister() {
   registerStartTimer = Date.now()
-  registerState = "timer"
+  registerState = REGISTRATION_COUNTDOWN_SECONDS > 0 ? "timer" : "collecting"
   registerFaces = []
   registerName = registerName || "New Student"
   resetFaceIdCircle()
@@ -296,7 +346,10 @@ function startRegister() {
 }
 
 function getRegistrationClassName() {
-  return currentClass === ALL_STUDENTS ? "All Students" : getCurrentClassLabel()
+  if (currentClass === ALL_STUDENTS || classSelect?.value === "All Students") {
+    return "All Students"
+  }
+  return classSelect?.value || getCurrentClassLabel()
 }
 
 async function createCameraRegisteredStudent() {
@@ -320,13 +373,52 @@ async function createCameraRegisteredStudent() {
   return data.id
 }
 
-async function saveAttendance(name) {
-  if (autoMarked.has(name) || attendanceWritesInFlight.has(name)) return true
+function getAttendanceKey(face) {
+  return String(face.id && face.id > 0 ? face.id : face.name)
+}
 
-  attendanceWritesInFlight.add(name)
+function isPlaceholderStudentName(name) {
+  return /^New Student\s+\d+$/i.test((name || "").trim())
+}
+
+function getRenameBeforeAttendanceMessage(name) {
+  return `${name} is registered, but attendance was not marked. Go to the roster, rename this student, then reauthenticate.`
+}
+
+function isAllStudentsClass(className) {
+  return !className || className === "All Students"
+}
+
+function getAssignClassBeforeAttendanceMessage(name) {
+  return `${name} is not yet associated with a class. Assign them a class in the roster.`
+}
+
+async function saveAttendance(face) {
+  const name = face.name
+  if (isPlaceholderStudentName(name)) {
+    setCameraMessage(getRenameBeforeAttendanceMessage(name))
+    return null
+  }
+  if (isAllStudentsClass(face.class_name)) {
+    setCameraMessage(getAssignClassBeforeAttendanceMessage(name))
+    return null
+  }
+
+  const attendanceKey = getAttendanceKey(face)
+  if (attendanceWritesInFlight.has(attendanceKey)) {
+    return lastAttendanceByKey.get(attendanceKey) || null
+  }
+  const lastMarkedAt = autoMarked.get(attendanceKey)
+  if (lastMarkedAt && Date.now() - lastMarkedAt < ATTENDANCE_STATUS_REFRESH_MS) {
+    return lastAttendanceByKey.get(attendanceKey) || null
+  }
+
+  attendanceWritesInFlight.add(attendanceKey)
   try {
     const formData = new FormData()
     formData.append("studentName", name)
+    if (face.id && face.id > 0) formData.append("studentId", face.id)
+    formData.append("class_name", face.class_name || "All Students")
     const response = await fetch("/api/attendance/markPresent", {
       method: "POST",
       body: formData,
@@ -335,27 +427,57 @@ async function saveAttendance(name) {
     if (!response.ok || data.status !== "success") {
       throw new Error(data.message || "Unable to mark attendance")
     }
-    autoMarked.add(name)
-    return true
+    autoMarked.set(attendanceKey, Date.now())
+    lastAttendanceByKey.set(attendanceKey, data.attendance)
+    return data.attendance
   } catch (error) {
     console.error("Attendance save failed:", error)
     headerEl.textContent = `Could not mark ${name} present.`
     setCameraMessage(`Could not mark ${name} present.`)
     return false
   } finally {
-    attendanceWritesInFlight.delete(name)
+    attendanceWritesInFlight.delete(attendanceKey)
   }
 }
 
-async function autoMarkPresent(name) {
-  if (autoMarked.has(name) || attendanceWritesInFlight.has(name)) return
+function formatAttendanceStatus(status) {
+  if (!status) return "not marked"
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
 
-  const saved = await saveAttendance(name)
-  if (!saved) return
+function getAttendanceConfirmationMessage(face, attendance) {
+  const status = formatAttendanceStatus(attendance?.status)
+  const className = attendance?.class_name || face.class_name || "All Students"
+  return `${face.name} has been marked ${status} for ${className}.`
+}
+
+async function autoMarkPresent(face) {
+  const name = face.name
+  if (isPlaceholderStudentName(name)) {
+    isRecognized = false
+    recognizedStudentName = ""
+    recognizedAttendanceMessage = getRenameBeforeAttendanceMessage(name)
+    setCameraMessage(recognizedAttendanceMessage)
+    return
+  }
+  if (isAllStudentsClass(face.class_name)) {
+    isRecognized = false
+    recognizedStudentName = ""
+    recognizedAttendanceMessage = getAssignClassBeforeAttendanceMessage(name)
+    setCameraMessage(recognizedAttendanceMessage)
+    return
+  }
+
+  const attendanceKey = getAttendanceKey(face)
+  if (attendanceWritesInFlight.has(attendanceKey)) return
+
+  const attendance = await saveAttendance(face)
+  if (!attendance) return
 
   isRecognized = true
   recognizedStudentName = name
-  updateDetectedFaceMessages()
+  recognizedAttendanceMessage = getAttendanceConfirmationMessage(face, attendance)
+  setCameraMessage(recognizedAttendanceMessage)
 }
 
 const id = new URL(location.href).searchParams.get("registerId")
@@ -443,6 +565,7 @@ function findNextUnfilledSegment(fromSegment) {
 }
 
 async function sendFrame() {
+  if (cameraIsShuttingDown) return
   if (isSending || video.readyState < 2) {
     return requestAnimationFrame(sendFrame)
   }
@@ -495,13 +618,20 @@ async function sendFrame() {
     if (registerState === "saving") return
 
     updateDetectedFaceMessages()
+    const knownFaces = getKnownFaces()
+    if (knownFaces.length) {
+      lastKnownFaceSeenAt = Date.now()
+      unknownFaceDetectedAt = null
+      autoRegistrationStarted = false
+    }
 
     if (
       !registerState &&
       !registerId &&
       !autoRegistrationStarted &&
       lastFaces.length === 1 &&
-      lastFaces[0].name === "Unknown"
+      lastFaces[0].name === "Unknown" &&
+      Date.now() - lastKnownFaceSeenAt > KNOWN_FACE_REGISTRATION_COOLDOWN_MS
     ) {
       if (unknownFaceDetectedAt === null) {
         unknownFaceDetectedAt = Date.now()
@@ -601,7 +731,7 @@ async function sendFrame() {
     } else {
       for (const face of lastFaces) {
         if (face.name !== "Unknown" && face.name !== "__TEMP__") {
-          await autoMarkPresent(face.name)
+          await autoMarkPresent(face)
         }
       }
       updateDetectedFaceMessages()
@@ -610,10 +740,11 @@ async function sendFrame() {
     console.error("Recognition error:", error)
   } finally {
     isSending = false
-    sendFrame()
+    if (!cameraIsShuttingDown) sendFrame()
   }
 }
 
+setupCameraExitLinks()
 loadClassOptions()
 updateRecognitionHeader()
 startCamera()

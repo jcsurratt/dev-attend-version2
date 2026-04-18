@@ -47,6 +47,13 @@ def _split_name(full_name: str) -> tuple[str, str]:
   return (parts[0], parts[1])
 
 
+def _normalize_class_name(class_name: Optional[str]) -> str:
+  selected_class = (class_name or "All Students").strip() or "All Students"
+  if selected_class == "Default: All Students":
+    return "All Students"
+  return selected_class
+
+
 def _get_class_column(columns: set[str]) -> Optional[str]:
   for column_name in CLASS_COLUMN_CANDIDATES:
     if column_name in columns:
@@ -66,10 +73,35 @@ def _ensure_classes_table(cursor) -> None:
   cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS classes (
-      name VARCHAR(100) PRIMARY KEY
+      name VARCHAR(100) PRIMARY KEY,
+      start_time TIME,
+      end_time TIME,
+      days_of_week TEXT DEFAULT ''
     );
     """
   )
+  cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS start_time TIME;")
+  cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIME;")
+  cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS days_of_week TEXT DEFAULT '';")
+
+
+def _normalize_default_all_students_records(cursor, table_name: str, class_column: Optional[str]) -> None:
+  cursor.execute(
+    """
+    INSERT INTO classes (name)
+    VALUES ('All Students')
+    ON CONFLICT (name) DO NOTHING;
+    """
+  )
+  cursor.execute("DELETE FROM classes WHERE name = 'Default: All Students';")
+  if class_column:
+    cursor.execute(
+      f"""
+      UPDATE {table_name}
+      SET {class_column} = 'All Students'
+      WHERE {class_column} = 'Default: All Students';
+      """
+    )
 
 
 def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[str, str, str]]:
@@ -89,7 +121,7 @@ def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[st
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return {
-          str(row[0]): (row[1], row[2], row[3] or "All Students")
+          str(row[0]): (row[1], row[2], _normalize_class_name(row[3]))
           for row in rows
         }
 
@@ -104,20 +136,41 @@ def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[st
       rows = cursor.fetchall()
 
   return {
-    str(row[0]): (*_split_name(row[1]), row[2] or "All Students")
+    str(row[0]): (*_split_name(row[1]), _normalize_class_name(row[2]))
     for row in rows
   }
 
 
 def get_available_classes() -> list[str]:
+  return [class_info["value"] for class_info in get_available_class_details()]
+
+
+def get_available_class_details() -> list[dict[str, object]]:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
       class_column = _get_class_column(columns)
+      _normalize_default_all_students_records(cursor, table_name, class_column)
       classes: set[str] = set()
-      cursor.execute("SELECT name FROM classes ORDER BY name;")
-      classes.update(str(row[0]) for row in cursor.fetchall())
+      class_details: dict[str, dict[str, object]] = {}
+      cursor.execute(
+        """
+        SELECT name, start_time, end_time, COALESCE(days_of_week, '')
+        FROM classes
+        ORDER BY name;
+        """
+      )
+      for name, start_time, end_time, days_of_week in cursor.fetchall():
+        class_name = _normalize_class_name(str(name))
+        classes.add(class_name)
+        class_details[class_name] = {
+          "label": class_name,
+          "value": class_name,
+          "start_time": start_time.strftime("%H:%M") if start_time else "",
+          "end_time": end_time.strftime("%H:%M") if end_time else "",
+          "days_of_week": days_of_week or "",
+        }
       if class_column:
         cursor.execute(
           f"""
@@ -128,14 +181,71 @@ def get_available_classes() -> list[str]:
           ORDER BY {class_column};
           """
         )
-        classes.update(str(row[0]) for row in cursor.fetchall())
+        classes.update(_normalize_class_name(str(row[0])) for row in cursor.fetchall())
+    connection.commit()
 
   classes = sorted(classes)
-  return classes or ["All Students"]
+  if not classes:
+    classes = ["All Students"]
+
+  return [
+    class_details.get(
+      class_name,
+      {
+        "label": class_name,
+        "value": class_name,
+        "start_time": "",
+        "end_time": "",
+        "days_of_week": "",
+      },
+    )
+    for class_name in classes
+  ]
+
+
+def update_class_schedule(
+  name: str,
+  start_time: Optional[str],
+  end_time: Optional[str],
+  days_of_week: str,
+) -> dict[str, object]:
+  class_name = name.strip()
+  if not class_name:
+    raise ValueError("Class name cannot be empty")
+
+  cleaned_start = start_time.strip() if start_time else None
+  cleaned_end = end_time.strip() if end_time else None
+  cleaned_days = days_of_week.strip()
+
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      _ensure_classes_table(cursor)
+      cursor.execute(
+        """
+        INSERT INTO classes (name, start_time, end_time, days_of_week)
+        VALUES (%s, NULLIF(%s, '')::time, NULLIF(%s, '')::time, %s)
+        ON CONFLICT (name) DO UPDATE
+        SET start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
+            days_of_week = EXCLUDED.days_of_week
+        RETURNING name, start_time, end_time, COALESCE(days_of_week, '');
+        """,
+        (class_name, cleaned_start or "", cleaned_end or "", cleaned_days),
+      )
+      row = cursor.fetchone()
+    connection.commit()
+
+  return {
+    "label": row[0],
+    "value": row[0],
+    "start_time": row[1].strftime("%H:%M") if row[1] else "",
+    "end_time": row[2].strftime("%H:%M") if row[2] else "",
+    "days_of_week": row[3] or "",
+  }
 
 
 def add_class(name: str) -> str:
-  class_name = name.strip()
+  class_name = _normalize_class_name(name)
   if not class_name:
     raise ValueError("Class name cannot be empty")
 
@@ -155,7 +265,7 @@ def add_class(name: str) -> str:
 
 
 def remove_class(name: str) -> None:
-  class_name = name.strip()
+  class_name = _normalize_class_name(name)
   if not class_name:
     raise ValueError("Class name cannot be empty")
   if class_name == "All Students":
@@ -242,7 +352,7 @@ def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, st
           )
         rows = cursor.fetchall()
         return [
-          (row[0], row[1], row[2], str(row[2]) in registered_ids, row[3])
+          (row[0], row[1], row[2], str(row[2]) in registered_ids, _normalize_class_name(row[3]))
           for row in rows
         ]
 
@@ -260,7 +370,7 @@ def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, st
         lname,
         student_id,
         str(student_id) in registered_ids,
-        class_name or "All Students",
+        _normalize_class_name(class_name),
       )
     )
   return students
@@ -286,7 +396,7 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
           {
             "id": row[0],
             "name": f"{row[1]} {row[2]}".strip(),
-            "class_name": row[3] or "All Students",
+            "class_name": _normalize_class_name(row[3]),
           }
           for row in rows
         ]
@@ -302,7 +412,7 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
       rows = cursor.fetchall()
 
   return [
-    {"id": row[0], "name": row[1], "class_name": row[2] or "All Students"}
+    {"id": row[0], "name": row[1], "class_name": _normalize_class_name(row[2])}
     for row in rows
   ]
 
@@ -316,7 +426,7 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
     with connection.cursor() as cursor:
       _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
-      selected_class = (class_name or "All Students").strip() or "All Students"
+      selected_class = _normalize_class_name(class_name)
       cursor.execute(
         """
         INSERT INTO classes (name)
@@ -401,7 +511,7 @@ def add_camera_student(class_name: Optional[str] = None) -> dict[str, object]:
 
   fname = "New"
   lname = f"Student {next_number}"
-  selected_class = (class_name or "All Students").strip() or "All Students"
+  selected_class = _normalize_class_name(class_name)
   student_id = add_student(fname, lname, selected_class)
 
   return {
@@ -475,7 +585,7 @@ def normalize_legacy_camera_students() -> list[dict[str, object]]:
 
 
 def update_student_class(student_id: str, class_name: str) -> str:
-  selected_class = class_name.strip() or "All Students"
+  selected_class = _normalize_class_name(class_name)
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:

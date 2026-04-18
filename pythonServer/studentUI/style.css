@@ -288,6 +288,11 @@ header .header-text h1 {
   border-radius: 10px;
 }
 
+#cameraClassSelect .default-class-option,
+#cameraClassSelect:has(option.default-class-option:checked) {
+  color: var(--gray);
+}
+
 #scanningInstruction {
   width: min(620px, 92%);
   margin: 8px auto 0;
@@ -385,6 +390,14 @@ button:active {
   transform: scale(0.97);
 }
 
+.page-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 /* =====================
    STUDENTS CARD
 ===================== */
@@ -441,16 +454,83 @@ button:active {
 }
 
 .attendance-student {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(390px, 1.5fr) minmax(250px, 0.95fr);
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  column-gap: 28px;
+  row-gap: 8px;
+  width: min(1100px, 100%);
+  overflow: visible;
+  padding: 10px 14px;
 }
 
 .attendance-student-name {
   font-weight: 600;
-  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.attendance-student .student-class-control {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding-left: 32px;
+}
+
+.attendance-student .student-attendance {
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.attendance-student .attendance-control {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 28px;
+  min-width: 0;
+}
+
+.attendance-student .attendance-status {
+  white-space: normal;
+  text-align: right;
+  max-width: 230px;
+}
+
+.attendance-student .student-class-select,
+.attendance-student .attendance-status-select {
+  min-width: 120px;
+  max-width: 160px;
+  padding: 6px 8px;
+}
+
+.attendance-student .attendance-status-select.not-marked {
+  color: var(--gray);
+}
+
+.attendance-na-label {
+  color: var(--gray);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.manual-student-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px auto;
+}
+
+.manual-student-label {
+  color: var(--gray);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .student-class-control {
@@ -473,6 +553,97 @@ button:active {
   min-width: 150px;
   padding: 6px 8px;
   border-radius: 8px;
+}
+
+.section-helper-label {
+  margin: -2px 0 12px 0;
+  color: var(--gray);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.roster-student-row {
+  width: min(980px, 100%);
+}
+
+#main .roster-student-row {
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+#main .roster-student-row .student-name-editor:empty {
+  display: none;
+}
+
+#main .roster-student-row .student-class-control {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+#main .roster-student-row .class-change-label {
+  color: var(--gray);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+#main .roster-student-row .name,
+#main .roster-student-row .student-class,
+#main .roster-student-row .class-change-label,
+#main .roster-student-row .student-class-select {
+  flex: 0 0 auto;
+}
+
+.student-attendance {
+  display: flex;
+  justify-content: center;
+}
+
+.attendance-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attendance-status {
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.attendance-student .attendance-status,
+.attendance-student .class-change-label {
+  color: var(--gray);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.attendance-status.present {
+  color: #2e7d32;
+}
+
+.attendance-status.tardy {
+  color: #ed6c02;
+}
+
+.attendance-status.absent {
+  color: #c62828;
+}
+
+.attendance-status.not-marked {
+  color: var(--gray);
+}
+
+.attendance-status-select {
+  min-width: 115px;
+  padding: 6px 8px;
 }
 /* =====================
    ADD STUDENT
@@ -591,7 +762,7 @@ select {
 
 body {
   #main.showDisabled {
-    .container:has(button.button:disabled) {
+    .container:not([data-class-name="All Students"]) {
       display: none;
     }
   }
@@ -770,6 +941,10 @@ body {
   gap: 10px;
 }
 
+#row {
+  margin-top: 18px;
+}
+
 .list-panel {
   display: flex;
   flex-direction: column;
@@ -791,6 +966,100 @@ body {
 
 .class-name {
   font-weight: 600;
+}
+
+.class-schedule-row {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.class-details {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+}
+
+.class-schedule-summary {
+  color: var(--gray);
+  font-size: 0.86rem;
+}
+
+.class-schedule-controls {
+  display: flex;
+  flex: 2 1 360px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schedule-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--gray);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.schedule-field-label input {
+  min-width: 120px;
+}
+
+.schedule-time-input {
+  caret-color: var(--accent);
+  width: 120px;
+}
+
+.schedule-time-input:focus {
+  animation: time-input-focus-pulse 1s step-end infinite;
+}
+
+.schedule-time-input.invalid-time-input {
+  border-color: #c62828;
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.18);
+}
+
+.time-input-error {
+  min-height: 1rem;
+  max-width: 150px;
+  color: #c62828;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+@keyframes time-input-focus-pulse {
+  50% {
+    caret-color: transparent;
+  }
+}
+
+.weekday-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.weekday-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border: 1px solid light-dark(var(--border), #3f4246);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.weekday-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
 }
 
 .empty-state {
@@ -941,4 +1210,13 @@ canvas {
   #students {
     width: 100%;
   }
+}
+
+#main .roster-student-row {
+  flex-direction: row;
+  align-items: center;
+}
+
+#main .roster-student-row .student-class-control {
+  flex-direction: column;
 }
