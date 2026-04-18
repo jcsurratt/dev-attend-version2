@@ -8,6 +8,7 @@ from pythonServer.app.repositories.attendance import (
   mark_student_present,
 )
 from pythonServer.app.repositories.roster import (
+  add_camera_student,
   add_class,
   add_student,
   delete_student,
@@ -16,10 +17,12 @@ from pythonServer.app.repositories.roster import (
   get_student_name_map,
   get_students,
   get_students_for_class,
+  normalize_legacy_camera_students,
   ping,
   remove_class,
   student_exists,
   update_student_class,
+  update_student_name,
 )
 from pythonServer.app.services.face_recognition import FaceRecognitionService
 from pythonServer.app.services.face_store import FaceStore
@@ -90,7 +93,10 @@ async def recognize_frame(
 
 @router.post("/delTempFace")
 async def delete_temp_face():
-  return get_face_service().clear_temp_face()
+  removed = face_store.remove_student("__TEMP__")
+  if not removed:
+    return {"status": "success", "message": "No temporary face data was present."}
+  return {"status": "success", "message": "Temporary face data was cleared."}
 
 
 @router.post("/api/unregisterStudent")
@@ -194,6 +200,26 @@ def create_student(
   }
 
 
+@router.post("/api/cameraRegistrationStudent")
+def create_camera_registration_student(
+  class_name: Optional[str] = Form(default=None),
+):
+  try:
+    student = add_camera_student(class_name)
+    return {"status": "success", **student}
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+
+@router.post("/api/students/normalizeCameraNames")
+def normalize_camera_student_names():
+  try:
+    renamed_students = normalize_legacy_camera_students()
+    return {"status": "success", "students": renamed_students}
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+
 @router.post("/api/students/updateClass")
 def change_student_class(
   studentId: str = Form(...),
@@ -202,6 +228,19 @@ def change_student_class(
   try:
     selected_class = update_student_class(studentId, class_name)
     return {"status": "success", "id": studentId, "class_name": selected_class}
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+
+@router.post("/api/students/updateName")
+def change_student_name(
+  studentId: str = Form(...),
+  fname: str = Form(...),
+  lname: str = Form(default=""),
+):
+  try:
+    student = update_student_name(studentId, fname, lname)
+    return {"status": "success", "id": studentId, **student}
   except Exception as error:
     return {"status": "error", "message": str(error)}
 

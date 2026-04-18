@@ -361,6 +361,119 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
   return student_id
 
 
+def _get_next_new_student_number(cursor, table_name: str) -> int:
+  if table_name == "roster":
+    cursor.execute(
+      """
+      SELECT lname
+      FROM roster
+      WHERE fname = 'New' AND lname LIKE 'Student %';
+      """
+    )
+    existing_names = [f"New {row[0]}" for row in cursor.fetchall()]
+  else:
+    cursor.execute(
+      """
+      SELECT name
+      FROM students
+      WHERE name LIKE 'New Student %';
+      """
+    )
+    existing_names = [row[0] for row in cursor.fetchall()]
+
+  highest_number = 0
+  for name in existing_names:
+    prefix = "New Student "
+    if not name.startswith(prefix):
+      continue
+    suffix = name[len(prefix):].strip()
+    if suffix.isdigit():
+      highest_number = max(highest_number, int(suffix))
+
+  return highest_number + 1
+
+
+def add_camera_student(class_name: Optional[str] = None) -> dict[str, object]:
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      table_name, _columns = _get_student_source(cursor)
+      next_number = _get_next_new_student_number(cursor, table_name)
+
+  fname = "New"
+  lname = f"Student {next_number}"
+  selected_class = (class_name or "All Students").strip() or "All Students"
+  student_id = add_student(fname, lname, selected_class)
+
+  return {
+    "id": student_id,
+    "fname": fname,
+    "lname": lname,
+    "full_name": f"{fname} {lname}",
+    "class_name": selected_class,
+  }
+
+
+def normalize_legacy_camera_students() -> list[dict[str, object]]:
+  renamed_students: list[dict[str, object]] = []
+
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      table_name, _columns = _get_student_source(cursor)
+      next_number = _get_next_new_student_number(cursor, table_name)
+
+      if table_name == "roster":
+        cursor.execute(
+          """
+          SELECT stuid
+          FROM roster
+          WHERE fname = 'Camera' AND lname LIKE 'Student %'
+          ORDER BY stuid;
+          """
+        )
+        student_ids = [row[0] for row in cursor.fetchall()]
+        for student_id in student_ids:
+          lname = f"Student {next_number}"
+          cursor.execute(
+            """
+            UPDATE roster
+            SET fname = 'New', lname = %s
+            WHERE stuid = %s;
+            """,
+            (lname, student_id),
+          )
+          renamed_students.append(
+            {"id": student_id, "fname": "New", "lname": lname, "full_name": f"New {lname}"}
+          )
+          next_number += 1
+      else:
+        cursor.execute(
+          """
+          SELECT id
+          FROM students
+          WHERE name LIKE 'Camera Student %'
+          ORDER BY id;
+          """
+        )
+        student_ids = [row[0] for row in cursor.fetchall()]
+        for student_id in student_ids:
+          name = f"New Student {next_number}"
+          cursor.execute(
+            """
+            UPDATE students
+            SET name = %s
+            WHERE id = %s;
+            """,
+            (name, student_id),
+          )
+          renamed_students.append(
+            {"id": student_id, "fname": "New", "lname": f"Student {next_number}", "full_name": name}
+          )
+          next_number += 1
+    connection.commit()
+
+  return renamed_students
+
+
 def update_student_class(student_id: str, class_name: str) -> str:
   selected_class = class_name.strip() or "All Students"
 
@@ -393,6 +506,42 @@ def update_student_class(student_id: str, class_name: str) -> str:
         raise LookupError(f"Student id {student_id} was not found")
     connection.commit()
   return selected_class
+
+
+def update_student_name(student_id: str, fname: str, lname: str) -> dict[str, str]:
+  first_name = fname.strip()
+  last_name = lname.strip()
+  full_name = " ".join(part for part in (first_name, last_name) if part).strip()
+  if not full_name:
+    raise ValueError("Student name cannot be empty")
+
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      table_name, _columns = _get_student_source(cursor)
+      id_column = "stuid" if table_name == "roster" else "id"
+      if table_name == "roster":
+        cursor.execute(
+          """
+          UPDATE roster
+          SET fname = %s, lname = %s
+          WHERE stuid = %s;
+          """,
+          (first_name, last_name, student_id),
+        )
+      else:
+        cursor.execute(
+          """
+          UPDATE students
+          SET name = %s
+          WHERE id = %s;
+          """,
+          (full_name, student_id),
+        )
+      if cursor.rowcount == 0:
+        raise LookupError(f"Student id {student_id} was not found")
+    connection.commit()
+
+  return {"fname": first_name, "lname": last_name, "fullName": full_name}
 
 
 def delete_student(student_id: str) -> None:

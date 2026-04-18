@@ -3,7 +3,10 @@ Object.assign(window, console)
 
 const ALL_STUDENTS = "__all__"
 const CLASS_STORAGE_KEY = "cameraSelectedClass"
-const CIRCLE_SEGMENTS = 12
+const CIRCLE_SEGMENTS = 8
+const REGISTRATION_COUNTDOWN_SECONDS = 1
+const FRAME_DELAY_MS = 35
+const UNKNOWN_REGISTRATION_DELAY_MS = 1200
 
 let currentClass = ALL_STUDENTS
 let lastFaces = []
@@ -16,8 +19,10 @@ let registerStartTimer = null
 let registerFaces = []
 let registerId = null
 let lastPixels = null
-let tempFaceUploadInFlight = false
 let isSending = false
+let autoRegistrationStarted = false
+let pendingCameraStudent = null
+let unknownFaceDetectedAt = null
 
 const attendanceWritesInFlight = new Set()
 const autoMarked = new Set()
@@ -29,7 +34,6 @@ const faceIdCanvas = document.getElementById("faceIdCircle")
 const faceIdWrap = document.getElementById("faceIdWrap")
 const classSelect = document.getElementById("cameraClassSelect")
 const headerEl = document.getElementById("recognitionHeader")
-const cameraMessageEl = document.getElementById("cameraMessage")
 
 const captureCtx = captureCanvas.getContext("2d", {
   willReadFrequently: true,
@@ -42,12 +46,14 @@ async function startCamera() {
     video: true,
   })
   video.srcObject = stream
-  cameraMessageEl.textContent = "Camera active. Looking for a face..."
+  if (!registerState) {
+    headerEl.textContent = "Camera active. Looking for a face..."
+  }
   sendFrame()
 }
 
 function setCameraMessage(message) {
-  if (cameraMessageEl) cameraMessageEl.textContent = message
+  headerEl.textContent = message
 }
 
 function showRecognitionFailure(message) {
@@ -102,20 +108,17 @@ function getDetectedFaceMessage() {
 
 function updateDetectedFaceMessages() {
   const message = getDetectedFaceMessage()
-  headerEl.textContent = message
   setCameraMessage(message)
 }
 
 function updateRecognitionHeader() {
-  if (registerState === "timer" || registerState === "collecting") return
+  if (registerState) return
 
   if (isRecognized) {
-    headerEl.textContent = "Welcome, " + recognizedStudentName + "!"
+    setCameraMessage("Welcome, " + recognizedStudentName + "!")
   } else {
-    headerEl.textContent =
-      `Recognizing students from ${getCurrentClassLabel()}.`
+    setCameraMessage(`Recognizing students from ${getCurrentClassLabel()}.`)
   }
-  setCameraMessage(headerEl.textContent)
 }
 
 function setCurrentClass(value) {
@@ -123,6 +126,7 @@ function setCurrentClass(value) {
   localStorage.setItem(CLASS_STORAGE_KEY, currentClass)
   autoMarked.clear()
   lastFaces = []
+  unknownFaceDetectedAt = null
   isRecognized = false
   recognizedStudentName = ""
   updateRecognitionHeader()
@@ -175,8 +179,12 @@ function drawOverlay() {
     const x2 = width - rawX1
     const centerX = x1 + (x2 - x1) / 2
     const centerY = y1 + (y2 - y1) / 2
+    const scanning = registerState && face.name === "Unknown"
     const known = face.name !== "Unknown"
-    const color = known ? "#00ff00" : "#ff0000"
+    const color =
+      scanning ? "#ffd400"
+      : known ? "#00ff00"
+      : "#ff0000"
 
     overlayCtx.strokeStyle = color
     overlayCtx.lineWidth = 2
@@ -197,7 +205,10 @@ function drawOverlay() {
     overlayCtx.lineWidth = 5
     overlayCtx.lineJoin = "round"
 
-    const text = face.name === "__TEMP__" ? registerName : face.name
+    const text =
+      scanning ? "Scanning..."
+      : face.name === "__TEMP__" ? registerName || "New Student"
+      : face.name
     const textX = x1
     const textY = Math.max(y1 - 6, 12)
     overlayCtx.strokeText(text, textX, textY)
@@ -261,15 +272,43 @@ function directionToSegment(dx, dy) {
 }
 
 function startRegister() {
+  registerStartTimer = Date.now()
+  registerState = "timer"
+  registerFaces = []
+  registerName = registerName || "New Student"
+  resetFaceIdCircle()
+  setCameraMessage(`Registering ${registerName}. Move your face in a full circle.`)
+
   fetch("/delTempFace", {
     method: "POST",
-  }).then(() => {
-    registerStartTimer = Date.now()
-    registerState = "timer"
-    registerFaces = []
-    resetFaceIdCircle()
-    headerEl.textContent = "Move your face in a full circle"
+  }).catch((error) => {
+    console.error("Unable to clear temporary face data:", error)
   })
+}
+
+function getRegistrationClassName() {
+  return currentClass === ALL_STUDENTS ? "All Students" : getCurrentClassLabel()
+}
+
+async function createCameraRegisteredStudent() {
+  if (pendingCameraStudent) return pendingCameraStudent.id
+
+  const formData = new FormData()
+  formData.append("class_name", getRegistrationClassName())
+
+  const response = await fetch("/api/cameraRegistrationStudent", {
+    method: "POST",
+    body: formData,
+  })
+  const data = await response.json()
+  if (!response.ok || data.status !== "success") {
+    throw new Error(data.message || "Unable to create student record.")
+  }
+
+  pendingCameraStudent = data
+  registerId = data.id
+  registerName = data.full_name || `${data.fname} ${data.lname}`
+  return data.id
 }
 
 async function saveAttendance(name) {
@@ -399,7 +438,7 @@ async function sendFrame() {
     return requestAnimationFrame(sendFrame)
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 75))
+  await new Promise((resolve) => setTimeout(resolve, FRAME_DELAY_MS))
   isSending = true
 
   try {
@@ -412,6 +451,8 @@ async function sendFrame() {
     )
 
     if (
+      !registerState &&
+      unknownFaceDetectedAt === null &&
       !hasFrameChanged(
         captureCtx,
         captureCanvas.width,
@@ -442,45 +483,65 @@ async function sendFrame() {
     }
 
     lastFaces = data.faces || []
+    if (registerState === "saving") return
+
     updateDetectedFaceMessages()
+
+    if (
+      !registerState &&
+      !registerId &&
+      !autoRegistrationStarted &&
+      lastFaces.length === 1 &&
+      lastFaces[0].name === "Unknown"
+    ) {
+      if (unknownFaceDetectedAt === null) {
+        unknownFaceDetectedAt = Date.now()
+        setCameraMessage("Unknown face detected. Checking whether this student is already registered.")
+        return
+      }
+      if (Date.now() - unknownFaceDetectedAt < UNKNOWN_REGISTRATION_DELAY_MS) {
+        setCameraMessage("Unknown face detected. Checking whether this student is already registered.")
+        return
+      }
+      autoRegistrationStarted = true
+      try {
+        setCameraMessage("Creating a new student entry...")
+        await createCameraRegisteredStudent()
+        startRegister()
+      } catch (error) {
+        console.error("Unable to create camera student:", error)
+        autoRegistrationStarted = false
+        registerId = null
+        registerName = null
+        pendingCameraStudent = null
+        setCameraMessage(error.message || "Unable to create a new student entry.")
+      }
+      return
+    }
+    unknownFaceDetectedAt = null
 
     if (registerState === "timer") {
       const timeLeft =
-        3 - Math.floor((Date.now() - registerStartTimer) / 1000)
-      headerEl.textContent =
-        `The registration will start in ${timeLeft} second${timeLeft === 1 ? "" : "s"}`
-      setCameraMessage(headerEl.textContent)
+        REGISTRATION_COUNTDOWN_SECONDS -
+        Math.floor((Date.now() - registerStartTimer) / 1000)
+      setCameraMessage(
+        `Registration for ${registerName} will start in ${timeLeft} second${timeLeft === 1 ? "" : "s"}.`,
+      )
       if (timeLeft <= 0) {
         registerState = "collecting"
       }
-    }
-
-    if (registerState === "collecting") {
+    } else if (registerState === "collecting") {
       if (lastFaces.length === 0) {
-        headerEl.textContent = "Look at the camera to start"
-        setCameraMessage(headerEl.textContent)
+        setCameraMessage(`Look at the camera to continue registering ${registerName}.`)
       } else if (lastFaces.length > 1) {
-        headerEl.textContent = "Only one person in frame when registering"
-        setCameraMessage(headerEl.textContent)
+        setCameraMessage(`Only one person should be in frame while registering ${registerName}.`)
       } else {
         const face = lastFaces[0]
 
-        if (face.name === "Unknown" && !tempFaceUploadInFlight) {
-          headerEl.textContent = "Face detected. Hold still while we capture your starting angle."
-          setCameraMessage(headerEl.textContent)
-          tempFaceUploadInFlight = true
-          try {
-            await postFace("__TEMP__", blob)
-          } finally {
-            tempFaceUploadInFlight = false
-          }
-        }
-
-        if (face.name !== "__TEMP__") {
-          headerEl.textContent =
-            "Face detected. Keep your face centered and wait for the guide to start."
-          setCameraMessage(headerEl.textContent)
-          return
+        if (face.name !== "Unknown" && face.name !== "__TEMP__") {
+          setCameraMessage(
+            `Face detected for ${registerName}. Keep your face centered and continue moving slowly.`,
+          )
         }
 
         const segment = directionToSegment(
@@ -497,24 +558,35 @@ async function sendFrame() {
 
         const nextSegment = findNextUnfilledSegment(segment)
         if (nextSegment !== null) {
-          headerEl.textContent =
-            `${segmentsFilled.size} / ${CIRCLE_SEGMENTS} angles captured`
-          setCameraMessage(headerEl.textContent)
+          setCameraMessage(`${registerName}: ${segmentsFilled.size} / ${CIRCLE_SEGMENTS} frames captured.`)
         }
 
         if (segmentsFilled.size >= CIRCLE_SEGMENTS) {
-          registerState = null
+          registerState = "saving"
           hideFaceIdCircle()
-          headerEl.textContent = "Circle complete! Saving..."
-          setCameraMessage(headerEl.textContent)
+          setCameraMessage(`Circle complete! Saving ${registerName}...`)
 
-          fetch("/delTempFace", { method: "POST" }).then(async () => {
-            await Promise.all(registerFaces.map((frame) => postFace(registerId, frame)))
-            headerEl.textContent = "You were registered!"
-            setCameraMessage(headerEl.textContent)
-            registerFaces = []
-            location.href = "/roster"
-          })
+          fetch("/delTempFace", { method: "POST" })
+            .then(async () => {
+              const finalRegisterId = registerId || (await createCameraRegisteredStudent())
+              let savedFrames = 0
+              for (const frame of registerFaces) {
+                const result = await postFace(finalRegisterId, frame)
+                if (result.status === "success") savedFrames += 1
+              }
+              if (savedFrames === 0) {
+                throw new Error("No usable face frames were saved.")
+              }
+              setCameraMessage(`${registerName} was registered. Rename this student in the roster.`)
+              registerFaces = []
+              location.href = "/roster"
+            })
+            .catch((error) => {
+              console.error("Registration save failed:", error)
+              registerState = "collecting"
+              resetFaceIdCircle()
+              setCameraMessage(`Unable to save ${registerName}. Keep your face centered and try the ring again.`)
+            })
         }
       }
     } else {

@@ -618,6 +618,18 @@ body {
         height: 25px;
         line-height: 25px;
       }
+      .student-name-editor {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        width: 100%;
+      }
+      .student-name-input {
+        width: 170px;
+        max-width: 100%;
+      }
       .student-class {
         height: 25px;
         line-height: 25px;

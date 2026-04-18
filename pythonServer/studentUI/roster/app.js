@@ -160,7 +160,9 @@ async function unregisterStudent(id, container) {
 
   const actions = container.querySelector(".actions")
   actions.innerHTML = ""
+  actions.appendChild(createEditNameButton(id, container))
   actions.appendChild(createRegisterLink(id, false))
+  actions.appendChild(createDeleteButton(id, container))
 }
 
 async function deleteStudent(id, container) {
@@ -202,6 +204,30 @@ async function updateStudentClass(id, className, container) {
   }
 
   container.querySelector(".student-class").textContent = `Class: ${data.class_name}`
+}
+
+async function updateStudentName(id, fname, lname, container) {
+  const formData = new FormData()
+  formData.append("studentId", id)
+  formData.append("fname", fname)
+  formData.append("lname", lname)
+
+  const data = await (
+    await fetch("/api/students/updateName", {
+      method: "POST",
+      body: formData,
+    })
+  ).json()
+
+  if (data.status !== "success") {
+    alert(data.message || "Unable to update student name.")
+    return false
+  }
+
+  container.dataset.fname = data.fname
+  container.dataset.lname = data.lname
+  container.querySelector(".name").textContent = data.fullName
+  return true
 }
 
 function createStudentClassSelect(id, selectedClass, container) {
@@ -264,6 +290,16 @@ function createUnregisterButton(id, container) {
   return button
 }
 
+function createEditNameButton(id, container) {
+  const button = a.newelem(
+    "button",
+    { class: "button edit-name-button", type: "button" },
+    ["Edit Name"],
+  )
+  button.addEventListener("click", () => showNameEditor(id, container))
+  return button
+}
+
 function createDeleteButton(id, container) {
   const button = a.newelem(
     "button",
@@ -274,14 +310,63 @@ function createDeleteButton(id, container) {
   return button
 }
 
+function showNameEditor(id, container) {
+  const editor = container.querySelector(".student-name-editor")
+  editor.innerHTML = ""
+
+  const firstNameInput = a.newelem("input", {
+    class: "student-name-input",
+    type: "text",
+    value: container.dataset.fname || "",
+    placeholder: "Student First Name",
+  })
+  const lastNameInput = a.newelem("input", {
+    class: "student-name-input",
+    type: "text",
+    value: container.dataset.lname || "",
+    placeholder: "Student Last Name",
+  })
+  const saveButton = a.newelem(
+    "button",
+    { class: "button", type: "button" },
+    ["Save Name"],
+  )
+  const cancelButton = a.newelem(
+    "button",
+    { class: "button", type: "button" },
+    ["Cancel"],
+  )
+
+  saveButton.addEventListener("click", async () => {
+    const fname = firstNameInput.value.trim()
+    const lname = lastNameInput.value.trim()
+    if (!fname && !lname) {
+      alert("Student name cannot be empty.")
+      return
+    }
+
+    const updated = await updateStudentName(id, fname, lname, container)
+    if (updated) editor.innerHTML = ""
+  })
+  cancelButton.addEventListener("click", () => {
+    editor.innerHTML = ""
+  })
+
+  editor.append(firstNameInput, lastNameInput, saveButton, cancelButton)
+  firstNameInput.focus()
+}
+
 function newNode(fname, lname, id, studentRegistered, className = "All Students") {
   const container = a.newelem(
     "div",
     {
       class: "container",
+      "data-fname": fname,
+      "data-lname": lname,
     },
     [
       a.newelem("span", { class: "name" }, [fname, " ", lname]),
+      a.newelem("div", { class: "student-name-editor" }, []),
       a.newelem("span", { class: "student-class" }, [`Class: ${className}`]),
       a.newelem("div", { class: "student-class-control" }, []),
       a.newelem("div", { class: "actions" }, []),
@@ -296,6 +381,7 @@ function newNode(fname, lname, id, studentRegistered, className = "All Students"
     )
 
   const actions = container.querySelector(".actions")
+  actions.appendChild(createEditNameButton(id, container))
   actions.appendChild(createRegisterLink(id, studentRegistered))
   if (studentRegistered) {
     actions.appendChild(createUnregisterButton(id, container))

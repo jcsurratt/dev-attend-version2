@@ -14,6 +14,9 @@ from pythonServer.app.settings import get_settings
 from .face_store import FaceDatabase, FaceStore
 
 
+FACE_MATCH_THRESHOLD = 0.9
+
+
 class StudentMutationResponse(TypedDict):
   status: str
   message: str
@@ -182,7 +185,7 @@ class FaceRecognitionService:
     for student_key, embeddings in face_db.items():
       for saved_embedding in embeddings:
         distance = (saved_embedding - current_embedding).norm().item()
-        if distance < 0.8 and distance < best_distance:
+        if distance < FACE_MATCH_THRESHOLD and distance < best_distance:
           best_distance = distance
           best_match = student_key
     return best_match, best_distance
