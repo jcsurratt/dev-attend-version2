@@ -159,13 +159,12 @@ header {
   color: white;
   padding: 15px 20px;
   margin: -20px -20px 30px -20px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) minmax(150px, 190px);
   align-items: center;
   gap: 15px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-  justify-content: center;
-  flex-direction: row;
-  flex-wrap: wrap;
+  justify-content: stretch;
   position: relative;
 }
 
@@ -190,25 +189,34 @@ header {
 
 /* Logo image */
 #logo {
+  grid-column: 1;
+  justify-self: start;
   height: 100px;
   width: auto;
+  max-width: none;
+  object-fit: contain;
   justify-items: flex-start;
   flex-shrink: 0;
 }
 
+header > a:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: max-content;
+  max-width: 100%;
+}
+
 /* Title next to logo */
 .header-text {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
   min-width: 0px;
-  flex: 1 1 auto;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
+  width: 100%;
+  position: static;
+  transform: none;
+  text-align: center;
 }
 .right-padding {
   flex-grow: 2;
@@ -218,6 +226,11 @@ h1 {
   margin: 0;
   color: white;
   font-size: 2rem;
+}
+
+header .header-text h1 {
+  text-align: center;
+  width: 100%;
 }
 
 #current-time {
@@ -238,10 +251,10 @@ h1 {
 }
 
 .navbar-time#current-time {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  grid-column: 3;
+  justify-self: end;
+  position: static;
+  transform: none;
   font-size: 0.9rem;
   color: var(--border);
 }
@@ -259,6 +272,20 @@ h1 {
   border-radius: 10px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
   border: 2px solid var(--border);
+}
+
+#camera-class-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 18px auto 0;
+}
+
+#cameraClassSelect {
+  min-width: 220px;
+  padding: 8px 12px;
+  border-radius: 10px;
 }
 
 #cameraVideo,
@@ -281,6 +308,22 @@ h1 {
   z-index: 2;
   pointer-events: none;
   background: transparent;
+}
+
+#cameraMessage {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
 }
 
 #captureCanvas {
@@ -387,6 +430,41 @@ button:active {
 .student:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
+
+.attendance-student {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.attendance-student-name {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.student-class-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.class-change-label {
+  color: var(--gray);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.student-class-select {
+  min-width: 150px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
 /* =====================
    ADD STUDENT
 ===================== */
@@ -445,6 +523,48 @@ select {
   max-width: 90%;
 }
 
+#classSearchInput {
+  width: 220px;
+  max-width: 90%;
+}
+
+.class-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, 92%);
+  margin: 8px auto 16px;
+  padding: 12px;
+  background: light-dark(#ffffff, #242628);
+  border: 1px solid light-dark(var(--border), #4a4d50);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
+  text-align: left;
+}
+
+.class-search-summary,
+.class-search-empty {
+  color: var(--gray);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.class-result {
+  width: 100%;
+  padding: 10px 12px;
+  background: light-dark(#f5f7fa, #1e1f21);
+  color: light-dark(var(--text-dark), var(--text-light));
+  border: 1px solid light-dark(var(--border), #3f4246);
+  border-radius: 10px;
+  text-align: left;
+}
+
+.class-result:hover,
+.class-result.selected {
+  background: var(--secondary);
+  color: var(--text-light);
+}
+
 /* Dropdown cursor */
 select {
   cursor: pointer;
@@ -458,11 +578,6 @@ select {
   background-color: var(--bg-dark);
   color: var(--text-light);
   border: none;
-  visibility: hidden;
-}
-
-#students:has {
-  visibility: visible;
 }
 
 body {
@@ -475,12 +590,21 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    margin-top: 14px;
     .container {
       display: flex;
       flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
       padding: 10px;
-      gap: 10px;
+      gap: 8px;
       align-content: center;
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
       a {
         text-decoration: none;
         button.button {
@@ -493,6 +617,12 @@ body {
       .name {
         height: 25px;
         line-height: 25px;
+      }
+      .student-class {
+        height: 25px;
+        line-height: 25px;
+        color: var(--gray);
+        font-size: 0.9rem;
       }
     }
   }
@@ -589,4 +719,201 @@ body {
 
 #classSelect {
   color: var(--gray);
+}
+
+.roster-panel {
+  width: min(720px, calc(100% - 24px));
+  margin: 18px auto;
+  padding: 18px;
+  background: light-dark(#ffffff, #242628);
+  border: 1px solid light-dark(var(--border), #4a4d50);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.roster-panel h2 {
+  margin-top: 0;
+}
+
+.form-row,
+#col,
+#row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(520px, 100%);
+  margin: 14px auto 0;
+}
+
+.class-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: light-dark(#f5f7fa, #1e1f21);
+  border: 1px solid light-dark(var(--border), #3f4246);
+  border-radius: 10px;
+}
+
+.class-name {
+  font-weight: 600;
+}
+
+.empty-state {
+  margin: 0;
+  color: var(--gray);
+}
+
+/* =====================
+   RESPONSIVE LAYOUT
+===================== */
+* {
+  box-sizing: border-box;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 1120px) {
+  body {
+    padding: 14px;
+  }
+
+  header {
+    margin: -14px -14px 22px -14px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  #logo {
+    height: 68px;
+    width: auto;
+    max-width: none;
+    object-fit: contain;
+  }
+
+  .header-text {
+    flex: 1 1 100%;
+    width: 100%;
+    order: 3;
+  }
+
+  .navbar-time#current-time {
+    order: 2;
+    width: auto;
+  }
+
+  h1 {
+    font-size: clamp(1.35rem, 5vw, 1.8rem);
+  }
+
+  #main-nav,
+  .nav-links,
+  .nav-auth {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  #main-nav {
+    padding: 6px 0 0 0;
+  }
+
+  .nav-link-wrap a,
+  .btn-nav-logout,
+  .btn-nav-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+  }
+
+  .roster-panel {
+    width: 100%;
+    padding: 14px;
+  }
+
+  input,
+  select,
+  button {
+    max-width: 100%;
+  }
+
+  #col input,
+  #col select,
+  .form-row input,
+  .form-row select {
+    flex: 1 1 190px;
+  }
+
+  #camera-class-picker {
+    flex-wrap: wrap;
+  }
+
+  #camera-container {
+    width: min(630px, 100%);
+    aspect-ratio: 4 / 3;
+    height: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    padding: 10px;
+  }
+
+  header {
+    margin: -10px -10px 18px -10px;
+  }
+
+  #logo {
+    height: 56px;
+  }
+
+  #main .container,
+  .attendance-student,
+  .class-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #main .container .actions,
+  .actions {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .name,
+  .student-class,
+  .attendance-student-name {
+    height: auto !important;
+    line-height: 1.25 !important;
+    text-align: center;
+  }
+
+  .student-class-select,
+  #classSelect,
+  #cameraClassSelect,
+  #searchInput,
+  #classSearchInput {
+    width: 100%;
+  }
+
+  .class-search-results,
+  #students {
+    width: 100%;
+  }
 }

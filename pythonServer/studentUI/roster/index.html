@@ -3,8 +3,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Attendance Sheet</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <title>Roster</title>
+    <link rel="stylesheet" href="/static/style.css?v=wrap-logo-aspect-20260418" />
   </head>
   <body>
     <header>
@@ -19,33 +19,53 @@
         <script src="/static/navbar.js"></script>
       </div>
     </header>
-    <div id="col">
+    <section class="roster-panel" aria-labelledby="classes-heading">
+      <h2 id="classes-heading">Class Roster</h2>
+      <div class="form-row">
+        <input
+          type="text"
+          name="new_class_name"
+          id="newClassName"
+          placeholder="Class Name"
+        />
+        <button id="addNewClass" type="button">Add New Class</button>
+      </div>
+      <div id="classList" class="list-panel"></div>
+    </section>
+
+    <section class="roster-panel" aria-labelledby="students-heading">
+      <h2 id="students-heading">Student Roster</h2>
+      <div id="col">
         <input
           type="text"
           name="fname"
           id="fname"
-          placeholder="student first name"
+          placeholder="Student First Name"
         />
         <input
           type="text"
           name="lname"
           id="lname"
-          placeholder="student last name"
+          placeholder="Student Last Name"
         />
-        <button id="addNewStudent">add new student</button>
+        <select
+          name="class_name"
+          id="class_name"
+        ></select>
+        <button id="addNewStudent" type="button">Add New Student</button>
       </div>
       <div id="row">
         <input type="checkbox" id="toggleShowDisabled" />
         <label for="toggleShowDisabled"
-          >show unregistered students only</label
+          >Show unregistered students only.</label
         >
       </div>
-    </div>
-    <div id="main"></div>
+      <div id="main"></div>
+    </section>
     <br />
     <a href="/"><button>Go Home</button></a>
     <script src="/jsGlobals/libloader.js"></script>
     <script src="/jsGlobals/allfuncs.js"></script>
-    <script src="/static/roster/app.js"></script>
+    <script src="/static/roster/app.js?v=stacked-change-class-20260418"></script>
   </body>
 </html>

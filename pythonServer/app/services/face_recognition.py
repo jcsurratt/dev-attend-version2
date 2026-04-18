@@ -23,6 +23,7 @@ class FaceResponse(TypedDict):
   box: list[float]
   name: str
   id: int
+  class_name: str
   distance: float
   direction_x: float
   direction_y: float
@@ -75,7 +76,7 @@ class FaceRecognitionService:
   def recognize_frame(
     self,
     image_bytes: bytes,
-    student_names: dict[str, tuple[str, str]],
+    student_names: dict[str, tuple[str, str, str]],
   ) -> FaceListResponse:
     face_db = self._face_store.load()
     image = self._load_image(image_bytes)
@@ -114,16 +115,21 @@ class FaceRecognitionService:
 
       if student_key == "__TEMP__":
         face_name = "__TEMP__"
+        face_class = ""
       elif student_key in student_names:
-        face_name = " ".join(student_names[student_key])
+        fname, lname, class_name = student_names[student_key]
+        face_name = " ".join((fname, lname)).strip()
+        face_class = class_name or "All Students"
       else:
         face_name = "Unknown"
+        face_class = ""
 
       results.append(
         {
           "box": [float(value) for value in box],
           "name": face_name,
-          "id": -1,
+          "id": int(student_key) if student_key.isdigit() else -1,
+          "class_name": face_class,
           "distance": round(best_distance, 2),
           "direction_x": round(((direction_x - 0.5) * -1) + 0.5, 3),
           "direction_y": round(direction_y, 3),
@@ -147,6 +153,22 @@ class FaceRecognitionService:
       torch.cuda.empty_cache()
 
     return {"status": "success", "message": "AI memory cleared for: __TEMP__"}
+
+  def unregister_student(self, student_id: str) -> StudentMutationResponse:
+    face_db = self._face_store.load()
+    if student_id not in face_db:
+      return {"status": "error", "message": f"Student {student_id} is not registered."}
+
+    embeddings: list[Tensor] = face_db.pop(student_id)
+    for embedding in embeddings:
+      del embedding
+
+    self._face_store.save(face_db)
+    gc.collect()
+    if torch.cuda.is_available():
+      torch.cuda.empty_cache()
+
+    return {"status": "success", "message": f"Student {student_id} was unregistered."}
 
   def _load_image(self, image_bytes: bytes) -> Optional[ImageType]:
     try:

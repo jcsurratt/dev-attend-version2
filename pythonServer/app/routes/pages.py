@@ -11,7 +11,14 @@ settings = get_settings()
 
 
 def _page(relative_path: str) -> FileResponse:
-  return FileResponse(Path(settings.static_dir, relative_path))
+  return FileResponse(
+    Path(settings.static_dir, relative_path),
+    headers={
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    },
+  )
 
 
 @router.api_route("/", methods=["GET", "HEAD"])

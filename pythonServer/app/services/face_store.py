@@ -32,3 +32,11 @@ class FaceStore:
 
   def registered_ids(self) -> set[str]:
     return {student_id for student_id in self.load() if student_id != "__TEMP__"}
+
+  def remove_student(self, student_id: str) -> bool:
+    face_db = self.load()
+    if student_id not in face_db:
+      return False
+    del face_db[student_id]
+    self.save(face_db)
+    return True
