@@ -115,6 +115,22 @@ Why:
 - easier to update later
 - easier to debug
 
+Important note:
+
+`POSTGRES_HOST` is the database host, not the web site host. If the app pages
+load but classes, students, or camera registration do not initialize, check the
+API routes such as `/api/classes` and `/api/students`. If those requests hang
+or return an error, the backend may be waiting on a database connection. In the
+shared classroom setup, PostgreSQL should use `POSTGRES_HOST=192.168.1.65`.
+
+To let other devices reach the web app, start Uvicorn with `--host 0.0.0.0`
+and use the computer's LAN IP address in the browser. That changes where the web
+server listens; it does not change where the database lives.
+
+For the current classroom database, this computer was placed on the same subnet
+with `192.168.1.66/24`, and PostgreSQL is reached at `192.168.1.65:5432`. If
+the computer only has a `169.254.x.x` address, it cannot reach that database.
+
 ## Step 5: Repositories Talk To The Database
 
 Files:
@@ -143,6 +159,13 @@ Examples:
 This file handles attendance-related database work.
 
 Right now it has a function for getting attendance records between two dates.
+
+It also includes compatibility behavior for the shared `192.168.1.65` database:
+
+- if `roster` does not have a class-assignment column, automatic absence marking skips instead of crashing
+- if `stu_attend` has `attend_timestamp`, the app adds/backfills the expected `timestamp` column
+
+These checks let the app work against both the classroom database and newer local schemas.
 
 ## Step 6: Routes Handle Web Requests
 
@@ -238,6 +261,10 @@ This file handles:
 This code is separated from routes because it is specialized logic.
 
 That keeps the route files simpler and easier to read.
+
+The camera page also loads `/api/classes` before starting camera recognition.
+That prevents the class dropdown from appearing blank because of the internal
+`__all__` value used by the JavaScript state.
 
 ## Step 9: The Frontend Files
 

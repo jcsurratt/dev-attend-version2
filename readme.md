@@ -154,6 +154,18 @@ Optional value:
 
 - `FACE_DB_PATH`
 
+Current classroom setup:
+
+- PostgreSQL runs on `192.168.1.65`.
+- This development computer is configured on the same subnet as `192.168.1.66`.
+- The app's `.env` should use `POSTGRES_HOST=192.168.1.65`.
+- The FastAPI site can still be opened locally at `http://127.0.0.1:8001` when Uvicorn is bound to `0.0.0.0`.
+
+The shared `192.168.1.65` database may not have the exact same schema as a fresh
+local development database. The repository code now handles the current shared
+schema where `roster` may not include a class-assignment column and
+`stu_attend` may store old attendance times in `attend_timestamp`.
+
 The face-recognition model weights are cached locally in `.torch-cache/` after they are downloaded. That directory is only for local runtime use and should not be committed to GitHub.
 
 ## Environment File
@@ -165,7 +177,7 @@ If a required PostgreSQL value is missing or blank, the app will fail at startup
 Example:
 
 ```env
-POSTGRES_HOST=127.0.0.1
+POSTGRES_HOST=192.168.1.65
 POSTGRES_PORT=5432
 POSTGRES_DB=dev-attend
 POSTGRES_USER=postgres
@@ -211,6 +223,38 @@ After the server starts, open:
 
 - `http://127.0.0.1:8000`
 
+To make the site available from other devices on the local network, bind the
+web server to all local interfaces:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn pythonServer.main:app --host 0.0.0.0 --port 8001
+```
+
+Then open the site from this computer at:
+
+- `http://127.0.0.1:8001`
+
+From another device, use this computer's current LAN IP address with port
+`8001`. `POSTGRES_HOST` controls where the backend looks for PostgreSQL. In
+the shared classroom setup, set `POSTGRES_HOST=192.168.1.65` so the app uses
+the shared PostgreSQL database instead of a local database.
+
+If Windows falls back to an address such as `169.254.x.x`, it is not properly on
+the classroom database subnet. For this setup, the Wi-Fi adapter was assigned
+`192.168.1.66/24` so the app can reach PostgreSQL at `192.168.1.65:5432`.
+
+Useful checks:
+
+```powershell
+Test-NetConnection 192.168.1.65 -Port 5432
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8001/api/testdb
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8001/api/classes
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8001/api/students
+```
+
+For camera testing on this computer, use `http://127.0.0.1:8001/camera`. Browser
+camera APIs are more reliable on localhost than on a plain HTTP LAN address.
+
 ## Current Routes
 
 ### Pages
@@ -239,7 +283,10 @@ After the server starts, open:
 - Face data is still stored in a file-based face database.
 - Face-recognition model files are cached locally in `.torch-cache`.
 - Student and roster information comes from PostgreSQL.
-- The attendance endpoint depends on the correct attendance table existing in PostgreSQL.
+- The shared database at `192.168.1.65` is the active classroom database for this setup.
+- Attendance code supports the shared `stu_attend.attend_timestamp` shape by backfilling the app's expected `timestamp` column.
+- If the shared `roster` table has no class-assignment column, auto-absence logic skips instead of crashing.
+- The camera page loads classes before starting camera recognition so the class dropdown is populated.
 - For team work, keep secrets in `.env`, keep local caches out of Git, and document any new feature flow you add.
 
 ## Documents In This Repo

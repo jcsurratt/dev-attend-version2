@@ -2,6 +2,7 @@ var registerName = null
 Object.assign(window, console)
 
 const ALL_STUDENTS = "__all__"
+const ALL_STUDENTS_OPTION = "All Students"
 const CLASS_STORAGE_KEY = "cameraSelectedClass"
 const CIRCLE_SEGMENTS = 6
 const REGISTRATION_COUNTDOWN_SECONDS = 0
@@ -205,7 +206,8 @@ function updateRecognitionHeader() {
 }
 
 function setCurrentClass(value) {
-  currentClass = value || ALL_STUDENTS
+  currentClass =
+    !value || value === ALL_STUDENTS_OPTION ? ALL_STUDENTS : value
   localStorage.setItem(CLASS_STORAGE_KEY, currentClass)
   autoMarked.clear()
   lastFaces = []
@@ -243,10 +245,11 @@ async function loadClassOptions() {
 
   const urlClass = new URL(location.href).searchParams.get("className")
   const savedClass = localStorage.getItem(CLASS_STORAGE_KEY)
-  const preferredClass = urlClass || savedClass || ALL_STUDENTS
+  const preferredClass =
+    urlClass || savedClass || ALL_STUDENTS_OPTION
   const matchingOption =
     Array.from(classSelect.options).find((option) => option.value === preferredClass)
-      ?.value || ALL_STUDENTS
+      ?.value || ALL_STUDENTS_OPTION
 
   classSelect.value = matchingOption
   setCurrentClass(matchingOption)
@@ -797,9 +800,11 @@ async function sendFrame() {
 }
 
 setupCameraExitLinks()
-loadClassOptions()
-updateRecognitionHeader()
-startCamera().catch((error) => {
+;(async () => {
+  await loadClassOptions()
+  updateRecognitionHeader()
+  await startCamera()
+})().catch((error) => {
   console.error("Unable to start camera:", error)
   setCameraMessage(
     error?.message || "Unable to access the camera. Check browser permissions and try again.",

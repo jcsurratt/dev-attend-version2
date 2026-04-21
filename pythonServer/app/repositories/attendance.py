@@ -60,8 +60,18 @@ def _ensure_stu_attend_table(cursor) -> None:
     );
     """
   )
+  cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP;")
   cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'present';")
   cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS manual_override BOOLEAN DEFAULT FALSE;")
+  columns = _get_table_columns(cursor, "stu_attend")
+  if "attend_timestamp" in columns:
+    cursor.execute(
+      """
+      UPDATE stu_attend
+      SET timestamp = attend_timestamp
+      WHERE timestamp IS NULL AND attend_timestamp IS NOT NULL;
+      """
+    )
 
 
 def _get_student_source(cursor) -> tuple[str, str, set[str]]:
@@ -209,17 +219,31 @@ def _resolve_student(cursor, student_name: str, student_id: Optional[str], class
     row = cursor.fetchone()
     return (student_key, row[0] if row and row[0] else student_name.strip())
 
-  cursor.execute(
-    """
-    SELECT stuid, TRIM(CONCAT(fname, ' ', lname))
-    FROM roster
-    WHERE TRIM(CONCAT(fname, ' ', lname)) = %s
-      AND COALESCE(class_name, 'All Students') = %s
-    ORDER BY stuid
-    LIMIT 1;
-    """,
-    (student_name.strip(), class_name),
-  )
+  _table_name, _id_column, columns = _get_student_source(cursor)
+  class_column = _student_class_column(columns)
+  if class_column:
+    cursor.execute(
+      f"""
+      SELECT stuid, TRIM(CONCAT(fname, ' ', lname))
+      FROM roster
+      WHERE TRIM(CONCAT(fname, ' ', lname)) = %s
+        AND COALESCE({class_column}, 'All Students') = %s
+      ORDER BY stuid
+      LIMIT 1;
+      """,
+      (student_name.strip(), class_name),
+    )
+  else:
+    cursor.execute(
+      """
+      SELECT stuid, TRIM(CONCAT(fname, ' ', lname))
+      FROM roster
+      WHERE TRIM(CONCAT(fname, ' ', lname)) = %s
+      ORDER BY stuid
+      LIMIT 1;
+      """,
+      (student_name.strip(),),
+    )
   row = cursor.fetchone()
   if row is None:
     raise LookupError(f"Student {student_name} was not found in the roster")
@@ -366,6 +390,11 @@ def mark_absences_for_today() -> None:
       if not _table_exists(cursor, "roster") or not _table_exists(cursor, "courses"):
         return
 
+      _table_name, _id_column, columns = _get_student_source(cursor)
+      class_column = _student_class_column(columns)
+      if class_column is None:
+        return
+
       course_code_sql = _course_code_sql("c")
       cursor.execute(
         f"""
@@ -378,8 +407,8 @@ def mark_absences_for_today() -> None:
           c.meeting_time
         FROM roster r
         JOIN courses c
-          ON COALESCE(r.class_name, 'All Students') = {course_code_sql}
-        WHERE COALESCE(r.class_name, 'All Students') <> 'All Students'
+          ON COALESCE(r.{class_column}, 'All Students') = {course_code_sql}
+        WHERE COALESCE(r.{class_column}, 'All Students') <> 'All Students'
         ORDER BY r.stuid;
         """
       )
