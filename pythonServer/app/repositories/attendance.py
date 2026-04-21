@@ -82,11 +82,17 @@ def _student_class_column(columns: set[str]) -> Optional[str]:
 
 
 def _build_course_code(prefix: object, class_number: object, section: object) -> str:
-  parts = [str(prefix).strip(), str(class_number).strip()]
+  parts: list[str] = []
+  prefix_value = str(prefix or "").strip()
+  number_value = "" if class_number is None else str(class_number).strip()
   section_value = str(section or "").strip()
-  if section_value:
+  if prefix_value:
+    parts.append(prefix_value)
+  if number_value and number_value.lower() != "none":
+    parts.append(number_value)
+  if section_value and section_value.lower() != "none":
     parts.append(section_value)
-  return "-".join(part for part in parts if part)
+  return "-".join(parts)
 
 
 def _split_days(days_of_week: Optional[str]) -> set[str]:
@@ -154,8 +160,9 @@ def _status_for_schedule(schedule: dict[str, object], now: datetime) -> str:
 
 def _course_code_sql(alias: str = "c") -> str:
   return (
-    f"TRIM({alias}.prefix || '-' || {alias}.class_number::text || "
-    f"CASE WHEN COALESCE(TRIM({alias}.section), '') <> '' THEN '-' || TRIM({alias}.section) ELSE '' END)"
+    f"CONCAT_WS('-', NULLIF(TRIM(COALESCE({alias}.prefix, '')), ''), "
+    f"NULLIF(TRIM(COALESCE({alias}.class_number::text, '')), ''), "
+    f"NULLIF(TRIM(COALESCE({alias}.section, '')), ''))"
   )
 
 

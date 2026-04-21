@@ -75,11 +75,32 @@ def _courses_table_exists(cursor) -> bool:
 
 
 def _build_course_code(prefix: object, class_number: object, section: object) -> str:
-  parts = [str(prefix).strip(), str(class_number).strip()]
+  parts: list[str] = []
+  prefix_value = str(prefix or "").strip()
+  number_value = "" if class_number is None else str(class_number).strip()
   section_value = str(section or "").strip()
-  if section_value:
+  if prefix_value:
+    parts.append(prefix_value)
+  if number_value and number_value.lower() != "none":
+    parts.append(number_value)
+  if section_value and section_value.lower() != "none":
     parts.append(section_value)
-  return "-".join(part for part in parts if part)
+  return "-".join(parts)
+
+
+def _parse_course_code(course_code: str) -> tuple[str, Optional[int], str]:
+  normalized = "-".join(part.strip() for part in course_code.split("-") if part.strip())
+  if not normalized:
+    raise ValueError("Class name cannot be empty")
+
+  parts = normalized.split("-")
+  if len(parts) >= 2 and parts[1].isdigit():
+    prefix = parts[0].upper()
+    class_number = int(parts[1])
+    section = "-".join(parts[2:]).upper() if len(parts) > 2 else ""
+    return (prefix, class_number, section)
+
+  return (normalized.upper(), None, "")
 
 
 def _split_course_meeting_time(meeting_time: Optional[str]) -> tuple[str, str]:
@@ -410,7 +431,29 @@ def add_class(name: str) -> str:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       if _courses_table_exists(cursor):
-        raise ValueError("Classes are managed from the courses table.")
+        existing_course = _find_course_by_code(cursor, class_name)
+        if existing_course is not None:
+          return class_name
+
+        prefix, class_number, section = _parse_course_code(class_name)
+        cursor.execute(
+          """
+          INSERT INTO courses (
+            prefix,
+            class_number,
+            section,
+            meeting_days,
+            meeting_time,
+            location,
+            semester_start,
+            semester_end
+          )
+          VALUES (%s, %s, NULLIF(%s, ''), '', '', '', NULL, NULL);
+          """,
+          (prefix, class_number, section),
+        )
+        connection.commit()
+        return class_name
       _ensure_classes_table(cursor)
       cursor.execute(
         """
@@ -434,7 +477,26 @@ def remove_class(name: str) -> None:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       if _courses_table_exists(cursor):
-        raise ValueError("Classes are managed from the courses table.")
+        course = _find_course_by_code(cursor, class_name)
+        if course is None:
+          raise ValueError(f"Course {class_name} was not found")
+
+        table_name, columns = _get_student_source(cursor)
+        class_column = _get_class_column(columns)
+        if class_column:
+          cursor.execute(
+            f"""
+            UPDATE {table_name}
+            SET {class_column} = %s
+            WHERE {class_column} = %s;
+            """,
+            ("All Students", class_name),
+          )
+        if _table_exists(cursor, "stu_attend"):
+          cursor.execute("DELETE FROM stu_attend WHERE class_id = %s;", (course["class_id"],))
+        cursor.execute("DELETE FROM courses WHERE class_id = %s;", (course["class_id"],))
+        connection.commit()
+        return
       _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
       class_column = _get_class_column(columns)
