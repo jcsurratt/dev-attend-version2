@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, Tuple
 
 from pythonServer.app.db import get_db_connection
@@ -67,6 +68,95 @@ def _get_student_source(cursor) -> tuple[str, set[str]]:
   if _table_exists(cursor, "students"):
     return ("students", _get_table_columns(cursor, "students"))
   raise RuntimeError("No supported student table was found")
+
+
+def _courses_table_exists(cursor) -> bool:
+  return _table_exists(cursor, "courses")
+
+
+def _build_course_code(prefix: object, class_number: object, section: object) -> str:
+  parts = [str(prefix).strip(), str(class_number).strip()]
+  section_value = str(section or "").strip()
+  if section_value:
+    parts.append(section_value)
+  return "-".join(part for part in parts if part)
+
+
+def _split_course_meeting_time(meeting_time: Optional[str]) -> tuple[str, str]:
+  raw_value = (meeting_time or "").strip()
+  if not raw_value or "-" not in raw_value:
+    return ("", "")
+
+  start_raw, end_raw = [part.strip() for part in raw_value.split("-", 1)]
+  for time_format in ("%I:%M %p", "%I %p"):
+    try:
+      start_value = datetime.strptime(start_raw, time_format).strftime("%H:%M")
+      end_value = datetime.strptime(end_raw, time_format).strftime("%H:%M")
+      return (start_value, end_value)
+    except ValueError:
+      continue
+  return ("", "")
+
+
+def _normalize_course_days(meeting_days: Optional[str]) -> str:
+  raw_value = (meeting_days or "").strip()
+  if not raw_value:
+    return ""
+  normalized = raw_value.replace("&", ",").replace("/", ",")
+  return ",".join(part.strip() for part in normalized.split(",") if part.strip())
+
+
+def _find_course_by_code(cursor, course_code: str) -> Optional[dict[str, object]]:
+  if not _courses_table_exists(cursor):
+    return None
+
+  cursor.execute(
+    """
+    SELECT class_id, prefix, class_number, section, meeting_days, meeting_time, location
+    FROM courses
+    ORDER BY class_id;
+    """
+  )
+  for row in cursor.fetchall():
+    code = _build_course_code(row[1], row[2], row[3])
+    if code == course_code:
+      start_time, end_time = _split_course_meeting_time(row[5])
+      return {
+        "class_id": row[0],
+        "label": code,
+        "value": code,
+        "start_time": start_time,
+        "end_time": end_time,
+        "days_of_week": _normalize_course_days(row[4]),
+        "location": row[6] or "",
+      }
+  return None
+
+
+def _ensure_student_class_column(
+  cursor,
+  table_name: str,
+  columns: set[str],
+) -> tuple[str, set[str]]:
+  class_column = _get_class_column(columns)
+  if class_column is not None:
+    return (class_column, columns)
+
+  cursor.execute(
+    f"""
+    ALTER TABLE {table_name}
+    ADD COLUMN IF NOT EXISTS class_name VARCHAR(100) DEFAULT 'All Students';
+    """
+  )
+  cursor.execute(
+    f"""
+    UPDATE {table_name}
+    SET class_name = 'All Students'
+    WHERE class_name IS NULL OR TRIM(CAST(class_name AS TEXT)) = '';
+    """
+  )
+  refreshed_columns = _get_table_columns(cursor, table_name)
+  return ("class_name", refreshed_columns)
 
 
 def _ensure_classes_table(cursor) -> None:
@@ -148,9 +238,41 @@ def get_available_classes() -> list[str]:
 def get_available_class_details() -> list[dict[str, object]]:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
+      if _courses_table_exists(cursor):
+        course_details = [
+          {
+            "label": "All Students",
+            "value": "All Students",
+            "start_time": "",
+            "end_time": "",
+            "days_of_week": "",
+          }
+        ]
+        cursor.execute(
+          """
+          SELECT class_id, prefix, class_number, section, meeting_days, meeting_time
+          FROM courses
+          ORDER BY prefix, class_number, section, class_id;
+          """
+        )
+        for class_id, prefix, class_number, section, meeting_days, meeting_time in cursor.fetchall():
+          class_code = _build_course_code(prefix, class_number, section)
+          start_time, end_time = _split_course_meeting_time(meeting_time)
+          course_details.append(
+            {
+              "label": class_code,
+              "value": class_code,
+              "class_id": class_id,
+              "start_time": start_time,
+              "end_time": end_time,
+              "days_of_week": _normalize_course_days(meeting_days),
+            }
+          )
+        return course_details
+
       _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
-      class_column = _get_class_column(columns)
+      class_column, columns = _ensure_student_class_column(cursor, table_name, columns)
       _normalize_default_all_students_records(cursor, table_name, class_column)
       classes: set[str] = set()
       class_details: dict[str, dict[str, object]] = {}
@@ -213,12 +335,48 @@ def update_class_schedule(
   if not class_name:
     raise ValueError("Class name cannot be empty")
 
+  weekday_text = ", ".join(day.strip() for day in days_of_week.split(",") if day.strip())
+  meeting_days = weekday_text.replace(", ", " & ")
+  if start_time and end_time:
+    start_display = datetime.strptime(start_time.strip(), "%H:%M").strftime("%I:%M %p").lstrip("0")
+    end_display = datetime.strptime(end_time.strip(), "%H:%M").strftime("%I:%M %p").lstrip("0")
+    meeting_time = f"{start_display} - {end_display}"
+  else:
+    meeting_time = ""
+
   cleaned_start = start_time.strip() if start_time else None
   cleaned_end = end_time.strip() if end_time else None
   cleaned_days = days_of_week.strip()
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
+      if _courses_table_exists(cursor):
+        course = _find_course_by_code(cursor, class_name)
+        if course is None:
+          raise ValueError(f"Course {class_name} was not found")
+
+        cursor.execute(
+          """
+          UPDATE courses
+          SET meeting_days = %s,
+              meeting_time = %s
+          WHERE class_id = %s
+          RETURNING class_id;
+          """,
+          (meeting_days, meeting_time, course["class_id"]),
+        )
+        row = cursor.fetchone()
+        if row is None:
+          raise ValueError(f"Course {class_name} was not found")
+        connection.commit()
+        return {
+          "label": class_name,
+          "value": class_name,
+          "start_time": cleaned_start or "",
+          "end_time": cleaned_end or "",
+          "days_of_week": cleaned_days,
+        }
+
       _ensure_classes_table(cursor)
       cursor.execute(
         """
@@ -251,6 +409,8 @@ def add_class(name: str) -> str:
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
+      if _courses_table_exists(cursor):
+        raise ValueError("Classes are managed from the courses table.")
       _ensure_classes_table(cursor)
       cursor.execute(
         """
@@ -273,6 +433,8 @@ def remove_class(name: str) -> None:
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
+      if _courses_table_exists(cursor):
+        raise ValueError("Classes are managed from the courses table.")
       _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
       class_column = _get_class_column(columns)
@@ -424,22 +586,27 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
+      class_column, columns = _ensure_student_class_column(cursor, table_name, columns)
       selected_class = _normalize_class_name(class_name)
-      cursor.execute(
-        """
-        INSERT INTO classes (name)
-        VALUES (%s)
-        ON CONFLICT (name) DO NOTHING;
-        """,
-        (selected_class,),
-      )
+      if _courses_table_exists(cursor):
+        if selected_class != "All Students" and _find_course_by_code(cursor, selected_class) is None:
+          raise ValueError(f"Course {selected_class} was not found")
+      else:
+        _ensure_classes_table(cursor)
+        cursor.execute(
+          """
+          INSERT INTO classes (name)
+          VALUES (%s)
+          ON CONFLICT (name) DO NOTHING;
+          """,
+          (selected_class,),
+        )
       if table_name == "roster":
-        if class_name and "class_name" in columns:
+        if class_column:
           cursor.execute(
-            """
-            INSERT INTO roster (fname, lname, class_name)
+            f"""
+            INSERT INTO roster (fname, lname, {class_column})
             VALUES (%s, %s, %s)
             RETURNING stuid;
             """,
@@ -452,10 +619,10 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
           )
         student_id = cursor.fetchone()[0]
       else:
-        if "class_name" in columns:
+        if class_column:
           cursor.execute(
-            """
-            INSERT INTO students (name, class_name)
+            f"""
+            INSERT INTO students (name, {class_column})
             VALUES (%s, %s)
             RETURNING id;
             """,
@@ -589,21 +756,23 @@ def update_student_class(student_id: str, class_name: str) -> str:
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_classes_table(cursor)
       table_name, columns = _get_student_source(cursor)
-      class_column = _get_class_column(columns)
-      if class_column is None:
-        raise RuntimeError("Students do not have a class column")
+      class_column, _columns = _ensure_student_class_column(cursor, table_name, columns)
+      if _courses_table_exists(cursor):
+        if selected_class != "All Students" and _find_course_by_code(cursor, selected_class) is None:
+          raise ValueError(f"Course {selected_class} was not found")
+      else:
+        _ensure_classes_table(cursor)
+        cursor.execute(
+          """
+          INSERT INTO classes (name)
+          VALUES (%s)
+          ON CONFLICT (name) DO NOTHING;
+          """,
+          (selected_class,),
+        )
 
       id_column = "stuid" if table_name == "roster" else "id"
-      cursor.execute(
-        """
-        INSERT INTO classes (name)
-        VALUES (%s)
-        ON CONFLICT (name) DO NOTHING;
-        """,
-        (selected_class,),
-      )
       cursor.execute(
         f"""
         UPDATE {table_name}

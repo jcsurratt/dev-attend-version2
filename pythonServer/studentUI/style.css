@@ -81,6 +81,11 @@ button {
   font-size: 0.95rem;
 }
 
+option {
+  background-color: light-dark(#ffffff, #242628);
+  color: #ffffff;
+}
+
 button {
   background-color: var(--accent-color);
   color: #000;
@@ -750,10 +755,6 @@ select {
   cursor: pointer;
 }
 
-#classSelect {
-  color: var(--bg-dark);
-}
-
 #students {
   background-color: var(--bg-dark);
   color: var(--text-light);
@@ -913,8 +914,12 @@ body {
   padding: 8px 0 4px 0;
 }
 
-#classSelect {
-  color: var(--gray);
+select,
+.student-class-select,
+.attendance-status-select,
+#classSelect,
+#cameraClassSelect {
+  color: #ffffff;
 }
 
 .roster-panel {

@@ -34,7 +34,10 @@ const autoMarked = new Map()
 const lastAttendanceByKey = new Map()
 
 const video = document.getElementById("cameraVideo")
-const captureCanvas = new OffscreenCanvas(400, 300)
+const captureCanvas =
+  typeof OffscreenCanvas === "function" ?
+    new OffscreenCanvas(400, 300)
+  : createFallbackCaptureCanvas()
 const overlayCanvas = document.getElementById("overlayCanvas")
 const faceIdCanvas = document.getElementById("faceIdCircle")
 const faceIdWrap = document.getElementById("faceIdWrap")
@@ -48,7 +51,35 @@ const captureCtx = captureCanvas.getContext("2d", {
 const overlayCtx = overlayCanvas.getContext("2d")
 const faceIdCtx = faceIdCanvas.getContext("2d")
 
+function createFallbackCaptureCanvas() {
+  const canvas = document.createElement("canvas")
+  canvas.width = 400
+  canvas.height = 300
+  return canvas
+}
+
+function captureCanvasToBlob(canvas, options) {
+  if (typeof canvas.convertToBlob === "function") {
+    return canvas.convertToBlob(options)
+  }
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+        return
+      }
+      reject(new Error("Unable to capture a camera frame."))
+    }, options.type, options.quality)
+  })
+}
+
 async function startCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setCameraMessage("This browser does not support camera access.")
+    return
+  }
+
   const stream = await navigator.mediaDevices.getUserMedia({
     video: true,
   })
@@ -615,7 +646,7 @@ async function sendFrame() {
       return
     }
 
-    const blob = await captureCanvas.convertToBlob({
+    const blob = await captureCanvasToBlob(captureCanvas, {
       type: "image/jpeg",
       quality: 0.8,
     })
@@ -768,4 +799,9 @@ async function sendFrame() {
 setupCameraExitLinks()
 loadClassOptions()
 updateRecognitionHeader()
-startCamera()
+startCamera().catch((error) => {
+  console.error("Unable to start camera:", error)
+  setCameraMessage(
+    error?.message || "Unable to access the camera. Check browser permissions and try again.",
+  )
+})
