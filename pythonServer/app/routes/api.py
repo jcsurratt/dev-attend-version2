@@ -18,6 +18,7 @@ from pythonServer.app.repositories.roster import (
   add_camera_student,
   add_class,
   add_student,
+  add_students_bulk,
   delete_student,
   get_available_class_details,
   get_student_name,
@@ -236,6 +237,73 @@ def create_student(
     "fname": fname,
     "lname": lname,
     "class_name": class_name or "All Students",
+  }
+
+
+@router.post("/api/students/importCsv")
+async def import_students_csv(
+  class_name: str = Form(...),
+  csv_file: UploadFile = File(...),
+):
+  selected_class = class_name.strip()
+  if not selected_class or selected_class == "All Students":
+    return {"status": "error", "message": "Please choose a class code before uploading a CSV."}
+
+  if not csv_file.filename:
+    return {"status": "error", "message": "Choose a CSV file to upload."}
+
+  file_text = (await csv_file.read()).decode("utf-8-sig", errors="ignore")
+  reader = csv.DictReader(io.StringIO(file_text))
+  if not reader.fieldnames:
+    return {"status": "error", "message": "The CSV must include a header row."}
+
+  normalized_field_map = {
+    str(field_name).strip().lower(): field_name
+    for field_name in reader.fieldnames
+    if field_name is not None
+  }
+
+  first_name_field = normalized_field_map.get("first_name") or normalized_field_map.get("fname")
+  last_name_field = normalized_field_map.get("last_name") or normalized_field_map.get("lname")
+  full_name_field = normalized_field_map.get("name") or normalized_field_map.get("full_name")
+
+  if full_name_field is None and first_name_field is None:
+    return {
+      "status": "error",
+      "message": "The CSV must include either name/full_name or first_name/fname columns.",
+    }
+
+  email_field = normalized_field_map.get("email") or normalized_field_map.get("student_email")
+  student_rows: list[tuple[str, str, str]] = []
+  for row in reader:
+    if full_name_field is not None:
+      full_name = str(row.get(full_name_field, "") or "").strip()
+      if not full_name:
+        continue
+      parts = full_name.split(None, 1)
+      fname = parts[0]
+      lname = parts[1] if len(parts) > 1 else ""
+    else:
+      fname = str(row.get(first_name_field, "") or "").strip()
+      lname = str(row.get(last_name_field, "") or "").strip() if last_name_field else ""
+    email = str(row.get(email_field, "") or "").strip() if email_field else ""
+
+    if fname or lname:
+      student_rows.append((fname, lname, email))
+
+  if not student_rows:
+    return {"status": "error", "message": "No students were found in the uploaded CSV."}
+
+  try:
+    students = add_students_bulk(student_rows, selected_class)
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+  return {
+    "status": "success",
+    "class_name": selected_class,
+    "count": len(students),
+    "students": students,
   }
 
 
