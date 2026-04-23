@@ -2,6 +2,7 @@ from datetime import datetime, time, timedelta
 from typing import Optional
 
 from pythonServer.app.db import get_db_connection
+from pythonServer.app.repositories.roster import get_students_for_class
 
 
 VALID_STATUSES = {"present", "tardy", "absent"}
@@ -49,6 +50,46 @@ def _get_table_columns(cursor, table_name: str) -> set[str]:
   return {row[0] for row in cursor.fetchall()}
 
 
+def _ensure_stu_attend_id_sequence(cursor) -> None:
+  cursor.execute(
+    """
+    SELECT column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'stu_attend'
+      AND column_name = 'attend_id'
+    LIMIT 1;
+    """
+  )
+  row = cursor.fetchone()
+  column_default = row[0] if row else None
+  if column_default and "nextval" in str(column_default):
+    return
+
+  cursor.execute("CREATE SEQUENCE IF NOT EXISTS stu_attend_attend_id_seq;")
+  cursor.execute(
+    """
+    SELECT COALESCE(MAX(attend_id), 0)
+    FROM stu_attend;
+    """
+  )
+  max_attend_id = cursor.fetchone()[0]
+  next_value = int(max_attend_id) + 1
+  cursor.execute("SELECT setval('stu_attend_attend_id_seq', %s, FALSE);", (next_value,))
+  cursor.execute(
+    """
+    ALTER TABLE stu_attend
+    ALTER COLUMN attend_id SET DEFAULT nextval('stu_attend_attend_id_seq');
+    """
+  )
+  cursor.execute(
+    """
+    ALTER SEQUENCE stu_attend_attend_id_seq
+    OWNED BY stu_attend.attend_id;
+    """
+  )
+
+
 def _ensure_stu_attend_table(cursor) -> None:
   cursor.execute(
     """
@@ -63,6 +104,7 @@ def _ensure_stu_attend_table(cursor) -> None:
   cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP;")
   cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'present';")
   cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS manual_override BOOLEAN DEFAULT FALSE;")
+  _ensure_stu_attend_id_sequence(cursor)
   columns = _get_table_columns(cursor, "stu_attend")
   if "attend_timestamp" in columns:
     cursor.execute(
@@ -546,3 +588,66 @@ def update_attendance_status(
     connection.commit()
 
   return _serialize_attendance(row)
+
+
+def get_attendance_export_for_class(class_name: str) -> list[dict[str, object]]:
+  selected_class = (class_name or "").strip()
+  if not selected_class:
+    raise ValueError("Class code is required for attendance export.")
+  if selected_class == "All Students":
+    raise ValueError("Please choose a class code before exporting attendance.")
+
+  students = get_students_for_class(selected_class)
+  export_day = datetime.now().date().isoformat()
+  attendance_by_student: dict[str, dict[str, object]] = {}
+
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      _ensure_stu_attend_table(cursor)
+      course = _get_course_by_code(cursor, selected_class)
+      if course is None:
+        raise LookupError(f"Course {selected_class} was not found")
+
+      cursor.execute(
+        """
+        SELECT
+          sa.attend_id,
+          TRIM(CONCAT(r.fname, ' ', r.lname)) AS student_name,
+          DATE(sa.timestamp) AS day,
+          sa.stuid,
+          %s AS class_name,
+          COALESCE(sa.status, 'present') AS status,
+          sa.timestamp,
+          COALESCE(sa.manual_override, FALSE) AS manual_override
+        FROM stu_attend sa
+        LEFT JOIN roster r ON r.stuid = sa.stuid
+        WHERE sa.class_id = %s
+          AND DATE(sa.timestamp) = CURRENT_DATE
+        ORDER BY sa.timestamp DESC, sa.attend_id DESC;
+        """,
+        (selected_class, course["class_id"]),
+      )
+      for row in cursor.fetchall():
+        record = _serialize_attendance(row)
+        student_key = str(record["student_id"] or record["student"])
+        if student_key not in attendance_by_student:
+          attendance_by_student[student_key] = record
+
+  return [
+    {
+      "day": str(student.get("attendance", {}).get("day") or export_day),
+      "class_code": selected_class,
+      "student_id": str(student.get("id") or ""),
+      "student_name": str(student.get("name") or ""),
+      "attendance_status": str(student.get("attendance", {}).get("status") or "not_marked"),
+      "marked_at": str(student.get("attendance", {}).get("marked_at") or ""),
+      "manual_override": "yes" if student.get("attendance", {}).get("manual_override") else "no",
+    }
+    for student in (
+      {
+        **student,
+        "attendance": attendance_by_student.get(str(student["id"]), {}),
+      }
+      for student in students
+    )
+  ]

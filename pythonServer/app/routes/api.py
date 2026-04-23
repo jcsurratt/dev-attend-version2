@@ -1,9 +1,12 @@
+import csv
+import io
 from typing import Literal, Optional, Union
 
 from fastapi import APIRouter, File, Form, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from pythonServer.app.repositories.attendance import (
+  get_attendance_export_for_class,
   get_attendance_by_day,
   get_today_attendance_map,
   mark_absences_for_today,
@@ -284,6 +287,43 @@ def change_student_name(
 @router.get("/api/sql/attendanceByDay")
 def attendance_by_day(dayStart: str, dayEnd: str):
   return {"attendance": get_attendance_by_day(dayStart, dayEnd)}
+
+
+@router.get("/api/attendance/export")
+def export_attendance(class_name: str):
+  try:
+    rows = get_attendance_export_for_class(class_name)
+  except Exception as error:
+    return JSONResponse(
+      status_code=400,
+      content={"status": "error", "message": str(error)},
+    )
+
+  output = io.StringIO()
+  writer = csv.DictWriter(
+    output,
+    fieldnames=[
+      "day",
+      "class_code",
+      "student_id",
+      "student_name",
+      "attendance_status",
+      "marked_at",
+      "manual_override",
+    ],
+  )
+  writer.writeheader()
+  writer.writerows(rows)
+  output.seek(0)
+
+  safe_class_name = "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in class_name)
+  filename = f"attendance-{safe_class_name or 'class'}-{rows[0]['day'] if rows else 'today'}.csv"
+
+  return StreamingResponse(
+    iter([output.getvalue()]),
+    media_type="text/csv",
+    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+  )
 
 
 @router.post("/api/attendance/markPresent")
