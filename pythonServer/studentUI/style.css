@@ -460,12 +460,12 @@ button:active {
 
 .attendance-student {
   display: grid;
-  grid-template-columns: minmax(140px, 0.9fr) minmax(390px, 1.5fr) minmax(250px, 0.95fr);
+  grid-template-columns: minmax(260px, 1.35fr) minmax(320px, 1.2fr) minmax(220px, 0.9fr);
   align-items: center;
   justify-content: center;
-  column-gap: 28px;
+  column-gap: 20px;
   row-gap: 8px;
-  width: min(1100px, 100%);
+  width: min(1280px, 100%);
   overflow: visible;
   padding: 10px 14px;
 }
@@ -473,9 +473,9 @@ button:active {
 .attendance-student-name {
   font-weight: 600;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -485,7 +485,7 @@ button:active {
   justify-content: flex-start;
   gap: 12px;
   min-width: 0;
-  padding-left: 32px;
+  padding-left: 12px;
 }
 
 .attendance-student .student-attendance {
@@ -503,7 +503,7 @@ button:active {
 .attendance-student .attendance-status {
   white-space: normal;
   text-align: right;
-  max-width: 230px;
+  max-width: 320px;
 }
 
 .attendance-student .student-class-select,

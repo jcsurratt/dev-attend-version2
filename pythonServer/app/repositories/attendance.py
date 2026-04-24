@@ -2,6 +2,7 @@ from datetime import datetime, time, timedelta
 from typing import Optional
 
 from pythonServer.app.db import get_db_connection
+from pythonServer.app.repositories.roster import format_student_display_name
 
 
 VALID_STATUSES = {"present", "tardy", "absent"}
@@ -49,7 +50,24 @@ def _get_table_columns(cursor, table_name: str) -> set[str]:
   return {row[0] for row in cursor.fetchall()}
 
 
+def _ensure_student_preferred_name_column(cursor) -> None:
+  if _table_exists(cursor, "roster"):
+    cursor.execute("ALTER TABLE roster ADD COLUMN IF NOT EXISTS pref_name VARCHAR(100);")
+
+
+def _student_display_name_sql(alias: str = "r") -> str:
+  return (
+    "TRIM(CONCAT("
+    f"{alias}.fname, "
+    f"CASE WHEN NULLIF(COALESCE({alias}.pref_name, ''), '') IS NOT NULL "
+    f"AND LOWER(COALESCE({alias}.pref_name, '')) <> LOWER(COALESCE({alias}.fname, '')) "
+    f"THEN CONCAT(' (', {alias}.pref_name, ')') ELSE '' END, "
+    f"' ', {alias}.lname))"
+  )
+
+
 def _ensure_stu_attend_table(cursor) -> None:
+  _ensure_student_preferred_name_column(cursor)
   cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS stu_attend (
@@ -207,10 +225,11 @@ def _get_course_by_code(cursor, class_name: str) -> Optional[dict[str, object]]:
 def _resolve_student(cursor, student_name: str, student_id: Optional[str], class_name: str) -> tuple[str, str]:
   if student_id is not None and str(student_id).strip():
     student_key = str(student_id).strip()
+    display_name_sql = _student_display_name_sql("r")
     cursor.execute(
-      """
-      SELECT TRIM(CONCAT(fname, ' ', lname))
-      FROM roster
+      f"""
+      SELECT {display_name_sql}
+      FROM roster r
       WHERE stuid = %s
       LIMIT 1;
       """,
@@ -221,28 +240,29 @@ def _resolve_student(cursor, student_name: str, student_id: Optional[str], class
 
   _table_name, _id_column, columns = _get_student_source(cursor)
   class_column = _student_class_column(columns)
+  display_name_sql = _student_display_name_sql("r")
   if class_column:
     cursor.execute(
       f"""
-      SELECT stuid, TRIM(CONCAT(fname, ' ', lname))
-      FROM roster
-      WHERE TRIM(CONCAT(fname, ' ', lname)) = %s
+      SELECT stuid, {display_name_sql}
+      FROM roster r
+      WHERE ({display_name_sql} = %s OR TRIM(CONCAT(r.fname, ' ', r.lname)) = %s)
         AND COALESCE({class_column}, 'All Students') = %s
       ORDER BY stuid
       LIMIT 1;
       """,
-      (student_name.strip(), class_name),
+      (student_name.strip(), student_name.strip(), class_name),
     )
   else:
     cursor.execute(
-      """
-      SELECT stuid, TRIM(CONCAT(fname, ' ', lname))
-      FROM roster
-      WHERE TRIM(CONCAT(fname, ' ', lname)) = %s
+      f"""
+      SELECT stuid, {display_name_sql}
+      FROM roster r
+      WHERE {display_name_sql} = %s OR TRIM(CONCAT(r.fname, ' ', r.lname)) = %s
       ORDER BY stuid
       LIMIT 1;
       """,
-      (student_name.strip(),),
+      (student_name.strip(), student_name.strip()),
     )
   row = cursor.fetchone()
   if row is None:
@@ -268,11 +288,12 @@ def get_attendance_by_day(day_start: str, day_end: str) -> list[dict[str, object
     with connection.cursor() as cursor:
       _ensure_stu_attend_table(cursor)
       course_code_sql = _course_code_sql("c")
+      display_name_sql = _student_display_name_sql("r")
       cursor.execute(
         f"""
         SELECT
           sa.attend_id,
-          TRIM(CONCAT(r.fname, ' ', r.lname)) AS student_name,
+          {display_name_sql} AS student_name,
           DATE(sa.timestamp) AS day,
           sa.stuid,
           COALESCE({course_code_sql}, 'All Students') AS class_name,
@@ -316,12 +337,13 @@ def mark_student_attendance(
 
       student_key, resolved_name = _resolve_student(cursor, name, student_id, selected_class)
       status = _status_for_schedule(course, now)
+      display_name_sql = _student_display_name_sql("r")
 
       cursor.execute(
-        """
+        f"""
         SELECT
           sa.attend_id,
-          TRIM(CONCAT(r.fname, ' ', r.lname)) AS student_name,
+          {display_name_sql} AS student_name,
           DATE(sa.timestamp) AS day,
           sa.stuid,
           %s AS class_name,
@@ -396,11 +418,12 @@ def mark_absences_for_today() -> None:
         return
 
       course_code_sql = _course_code_sql("c")
+      display_name_sql = _student_display_name_sql("r")
       cursor.execute(
         f"""
         SELECT
           r.stuid,
-          TRIM(CONCAT(r.fname, ' ', r.lname)) AS student_name,
+          {display_name_sql} AS student_name,
           {course_code_sql} AS class_name,
           c.class_id,
           c.meeting_days,
@@ -454,11 +477,12 @@ def get_today_attendance_map() -> dict[str, dict[str, object]]:
     with connection.cursor() as cursor:
       _ensure_stu_attend_table(cursor)
       course_code_sql = _course_code_sql("c")
+      display_name_sql = _student_display_name_sql("r")
       cursor.execute(
         f"""
         SELECT
           sa.attend_id,
-          TRIM(CONCAT(r.fname, ' ', r.lname)) AS student_name,
+          {display_name_sql} AS student_name,
           DATE(sa.timestamp) AS day,
           sa.stuid,
           COALESCE({course_code_sql}, 'All Students') AS class_name,

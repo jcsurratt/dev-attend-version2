@@ -409,7 +409,32 @@ async function updateStudentName(id, fname, lname, container) {
 
   container.dataset.fname = data.fname
   container.dataset.lname = data.lname
+  if (typeof data.prefName === "string") {
+    container.dataset.prefName = data.prefName
+  }
   container.dataset.nameEdited = "true"
+  container.querySelector(".name").textContent = data.fullName
+  return true
+}
+
+async function updateStudentPreferredName(id, prefName, container) {
+  const formData = new FormData()
+  formData.append("studentId", id)
+  formData.append("pref_name", prefName)
+
+  const data = await (
+    await fetch("/api/students/updatePreferredName", {
+      method: "POST",
+      body: formData,
+    })
+  ).json()
+
+  if (data.status !== "success") {
+    alert(data.message || "Unable to update preferred name.")
+    return false
+  }
+
+  container.dataset.prefName = data.prefName || ""
   container.querySelector(".name").textContent = data.fullName
   return true
 }
@@ -488,6 +513,16 @@ function createEditNameButton(id, container) {
   return button
 }
 
+function createPreferredNameButton(id, container) {
+  const button = a.newelem(
+    "button",
+    { class: "button preferred-name-button", type: "button" },
+    ["Preferred Name"],
+  )
+  button.addEventListener("click", () => showPreferredNameEditor(id, container))
+  return button
+}
+
 function createDeleteButton(id, container) {
   const button = a.newelem(
     "button",
@@ -545,18 +580,70 @@ function showNameEditor(id, container) {
   firstNameInput.focus()
 }
 
-function newNode(fname, lname, id, studentRegistered, className = "All Students") {
+function showPreferredNameEditor(id, container) {
+  const editor = container.querySelector(".student-name-editor")
+  editor.innerHTML = ""
+
+  const preferredNameInput = a.newelem("input", {
+    class: "student-name-input",
+    type: "text",
+    value: container.dataset.prefName || "",
+    placeholder: "Preferred Name",
+  })
+  const saveButton = a.newelem(
+    "button",
+    { class: "button", type: "button" },
+    ["Save Preferred Name"],
+  )
+  const clearButton = a.newelem(
+    "button",
+    { class: "button", type: "button" },
+    ["Clear"],
+  )
+  const cancelButton = a.newelem(
+    "button",
+    { class: "button", type: "button" },
+    ["Cancel"],
+  )
+
+  saveButton.addEventListener("click", async () => {
+    const updated = await updateStudentPreferredName(id, preferredNameInput.value.trim(), container)
+    if (updated) editor.innerHTML = ""
+  })
+  clearButton.addEventListener("click", async () => {
+    const updated = await updateStudentPreferredName(id, "", container)
+    if (updated) editor.innerHTML = ""
+  })
+  cancelButton.addEventListener("click", () => {
+    editor.innerHTML = ""
+  })
+
+  editor.append(preferredNameInput, saveButton, clearButton, cancelButton)
+  preferredNameInput.focus()
+}
+
+function newNode(
+  fname,
+  lname,
+  id,
+  studentRegistered,
+  className = "All Students",
+  prefName = "",
+  displayName = "",
+) {
+  const resolvedDisplayName = displayName || [fname, lname].filter(Boolean).join(" ")
   const container = a.newelem(
     "div",
     {
       class: "container roster-student-row",
       "data-fname": fname,
       "data-lname": lname,
+      "data-pref-name": prefName || "",
       "data-class-name": className,
       "data-name-edited": isAutomaticNewStudentName(fname, lname) ? "false" : "true",
     },
     [
-      a.newelem("span", { class: "name" }, [fname, " ", lname]),
+      a.newelem("span", { class: "name" }, [resolvedDisplayName]),
       a.newelem("div", { class: "student-name-editor" }, []),
       a.newelem("span", { class: "student-class" }, [`Class: ${className}`]),
       a.newelem("div", { class: "student-class-control" }, []),
@@ -573,6 +660,7 @@ function newNode(fname, lname, id, studentRegistered, className = "All Students"
 
   const actions = container.querySelector(".actions")
   actions.appendChild(createEditNameButton(id, container))
+  actions.appendChild(createPreferredNameButton(id, container))
   actions.appendChild(createRegisterLink(id, studentRegistered))
   if (studentRegistered) {
     actions.appendChild(createUnregisterButton(id, container))
