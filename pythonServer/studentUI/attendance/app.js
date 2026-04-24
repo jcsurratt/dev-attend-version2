@@ -7,6 +7,7 @@ const classSearchResults = document.getElementById("classSearchResults")
 const ATTENDANCE_REFRESH_MS = 5000
 let studentRenderRequestId = 0
 let renderedStudentSignature = ""
+let classRefreshInFlight = null
 
 function getSelectedClass() {
   if (!classSelect.options.length) return ""
@@ -14,9 +15,19 @@ function getSelectedClass() {
 }
 
 async function loadClasses(preferredClass = null) {
+  if (classRefreshInFlight) return classRefreshInFlight
+
+  classRefreshInFlight = (async () => {
   const data = await (await fetch("/api/classes")).json()
   availableClasses = data.classes || []
   renderClassOptions(preferredClass)
+  })()
+
+  try {
+    await classRefreshInFlight
+  } finally {
+    classRefreshInFlight = null
+  }
 }
 
 function renderClassOptions(preferredClass = null) {
@@ -328,5 +339,8 @@ classSelect.addEventListener("change", async function () {
 ;(async () => {
   await loadClasses("All Students")
   await renderStudents()
-  setInterval(renderStudents, ATTENDANCE_REFRESH_MS)
+  setInterval(async () => {
+    await loadClasses(currentClass || "All Students")
+    await renderStudents()
+  }, ATTENDANCE_REFRESH_MS)
 })()
