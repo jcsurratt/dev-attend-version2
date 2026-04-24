@@ -9,6 +9,7 @@ const exportAttendanceHint = document.getElementById("exportAttendanceHint")
 const ATTENDANCE_REFRESH_MS = 5000
 let studentRenderRequestId = 0
 let renderedStudentSignature = ""
+let classRefreshInFlight = null
 
 function getSelectedClass() {
   if (!classSelect.options.length) return ""
@@ -30,9 +31,19 @@ function syncExportState() {
 }
 
 async function loadClasses(preferredClass = null) {
+  if (classRefreshInFlight) return classRefreshInFlight
+
+  classRefreshInFlight = (async () => {
   const data = await (await fetch("/api/classes")).json()
   availableClasses = data.classes || []
   renderClassOptions(preferredClass)
+  })()
+
+  try {
+    await classRefreshInFlight
+  } finally {
+    classRefreshInFlight = null
+  }
 }
 
 function renderClassOptions(preferredClass = null) {
@@ -400,5 +411,8 @@ exportAttendanceButton.addEventListener("click", exportAttendanceCsv)
 ;(async () => {
   await loadClasses()
   await renderStudents()
-  setInterval(renderStudents, ATTENDANCE_REFRESH_MS)
+  setInterval(async () => {
+    await loadClasses(currentClass || null)
+    await renderStudents()
+  }, ATTENDANCE_REFRESH_MS)
 })()
