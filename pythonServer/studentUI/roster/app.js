@@ -4,6 +4,12 @@ const a = loadlib("allfuncs")
 var main = a.qs("#main")
 var classSelect = a.qs("#class_name")
 var classList = a.qs("#classList")
+var rosterClassFilter = a.qs("#rosterClassFilter")
+var addNewStudentButton = a.qs("#addNewStudent")
+var rosterCsvFile = a.qs("#rosterCsvFile")
+var uploadRosterCsv = a.qs("#uploadRosterCsv")
+var rosterCsvHint = a.qs("#rosterCsvHint")
+var rosterCsvStatus = a.qs("#rosterCsvStatus")
 var classes = []
 const WEEKDAYS = [
   "Monday",
@@ -16,7 +22,60 @@ const WEEKDAYS = [
 ]
 
 function getSelectedClass() {
-  return classSelect.value || "All Students"
+  return classSelect.value || ""
+}
+
+function hasAssignedClassSelection() {
+  const selectedClass = getSelectedClass()
+  return !!selectedClass && selectedClass !== "All Students"
+}
+
+function syncClassAssignmentState() {
+  const importEnabled = hasAssignedClassSelection()
+  addNewStudentButton.disabled = !importEnabled
+  uploadRosterCsv.disabled = !importEnabled
+  rosterCsvHint.textContent =
+    importEnabled ?
+      `Every student in the CSV will be added to ${getSelectedClass()}.`
+    : "Choose a class code before uploading."
+  if (!importEnabled) {
+    setRosterCsvStatus("")
+  }
+}
+
+function setRosterCsvStatus(message, isError = false) {
+  rosterCsvStatus.textContent = message
+  rosterCsvStatus.style.color = isError ? "#b42318" : "#166534"
+}
+
+function getRosterFilterValue() {
+  return rosterClassFilter.value || "__all__"
+}
+
+function populateRosterClassFilter(selectedValue = "__all__") {
+  const nextValue =
+    selectedValue === "__all__" || classes.some((classOption) => classOption.value === selectedValue) ?
+      selectedValue
+    : "__all__"
+
+  rosterClassFilter.innerHTML = ""
+  rosterClassFilter.appendChild(a.newelem("option", { value: "__all__" }, ["All classes"]))
+  for (const classOption of classes) {
+    rosterClassFilter.appendChild(
+      a.newelem("option", { value: classOption.value }, [classOption.label]),
+    )
+  }
+  rosterClassFilter.value = nextValue
+}
+
+function applyRosterClassFilter() {
+  const selectedFilter = getRosterFilterValue()
+  document.querySelectorAll(".roster-student-row").forEach((row) => {
+    const rowClassName = row.dataset.className || "All Students"
+    row.style.display =
+      selectedFilter === "__all__" || rowClassName === selectedFilter ? ""
+      : "none"
+  })
 }
 
 async function loadClasses(preferredClass = null) {
@@ -24,6 +83,7 @@ async function loadClasses(preferredClass = null) {
   classes = data.classes || []
 
   classSelect.innerHTML = ""
+  classSelect.appendChild(a.newelem("option", { value: "" }, ["Choose a class code"]))
   for (const classOption of classes) {
     const option = document.createElement("option")
     option.value = classOption.value
@@ -35,12 +95,15 @@ async function loadClasses(preferredClass = null) {
     const selected =
       Array.from(classSelect.options).find(
         (option) => option.value === preferredClass,
-      )?.value || classSelect.options[0].value
+      )?.value || ""
     classSelect.value = selected
   }
 
   renderClassList()
   updateStudentClassSelectors(preferredClass || "All Students")
+  populateRosterClassFilter(getRosterFilterValue())
+  syncClassAssignmentState()
+  applyRosterClassFilter()
 }
 
 function renderClassList() {
@@ -300,6 +363,10 @@ a.listen("#addNewStudent", "click", async function () {
   var lname = a.qs("#lname").value.trim()
   var className = getSelectedClass()
   if (!fname && !lname) return
+  if (!className || className === "All Students") {
+    alert("Choose a class code before adding a student.")
+    return
+  }
 
   formData.append("fname", fname)
   formData.append("lname", lname)
@@ -315,13 +382,59 @@ a.listen("#addNewStudent", "click", async function () {
   log(fname, lname, id, false, data)
   newNode(fname, lname, id, false, data.class_name)
 })
-;(async () => {
-  await loadClasses("All Students")
+
+async function loadRosterStudents() {
+  main.innerHTML = ""
   var students = await (await fetch("/api/students")).json()
+  for (var s of students) newNode(...s)
+  applyRosterClassFilter()
+}
+
+async function uploadRosterCsvFile() {
+  const selectedClass = getSelectedClass()
+  if (!selectedClass || selectedClass === "All Students") {
+    setRosterCsvStatus("Choose a class code before uploading a CSV.", true)
+    return
+  }
+  if (!rosterCsvFile.files?.length) {
+    setRosterCsvStatus("Choose a CSV file to upload.", true)
+    return
+  }
+
+  setRosterCsvStatus(`Uploading ${rosterCsvFile.files[0].name}...`)
+  const formData = new FormData()
+  formData.append("class_name", selectedClass)
+  formData.append("csv_file", rosterCsvFile.files[0])
+
+  const data = await (
+    await fetch("/api/students/importCsv", {
+      method: "POST",
+      body: formData,
+    })
+  ).json()
+
+  if (data.status !== "success") {
+    setRosterCsvStatus(data.message || "Unable to import roster CSV.", true)
+    return
+  }
+
+  rosterCsvFile.value = ""
+  setRosterCsvStatus(
+    `Added ${data.count} student${data.count === 1 ? "" : "s"} to ${data.class_name}.`,
+  )
+  await loadRosterStudents()
+}
+
+a.listen("#uploadRosterCsv", "click", uploadRosterCsvFile)
+classSelect.addEventListener("change", syncClassAssignmentState)
+rosterClassFilter.addEventListener("change", applyRosterClassFilter)
+
+;(async () => {
+  await loadClasses()
+  await loadRosterStudents()
   a.listen("#toggleShowDisabled", "change", function () {
     a.qs("#main").classList.toggle("showDisabled", this.checked)
   })
-  for (var s of students) newNode(...s)
 })()
 
 async function unregisterStudent(id, container) {
@@ -387,6 +500,7 @@ async function updateStudentClass(id, className, container) {
 
   container.querySelector(".student-class").textContent = `Class: ${data.class_name}`
   container.dataset.className = data.class_name
+  applyRosterClassFilter()
 }
 
 async function updateStudentName(id, fname, lname, container) {

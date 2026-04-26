@@ -1,16 +1,32 @@
-let currentClass = "All Students"
+let currentClass = ""
 let availableClasses = []
 const studentsDiv = document.getElementById("students")
 const classSelect = document.getElementById("classSelect")
 const classSearchInput = document.getElementById("classSearchInput")
 const classSearchResults = document.getElementById("classSearchResults")
+const exportAttendanceButton = document.getElementById("exportAttendanceButton")
+const exportAttendanceHint = document.getElementById("exportAttendanceHint")
 const ATTENDANCE_REFRESH_MS = 5000
 let studentRenderRequestId = 0
 let renderedStudentSignature = ""
 
 function getSelectedClass() {
   if (!classSelect.options.length) return ""
-  return classSelect.value || "All Students"
+  return classSelect.value || ""
+}
+
+function hasExportableClassSelection() {
+  const selectedClass = getSelectedClass()
+  return !!selectedClass && selectedClass !== "All Students"
+}
+
+function syncExportState() {
+  const exportEnabled = hasExportableClassSelection()
+  exportAttendanceButton.disabled = !exportEnabled
+  exportAttendanceHint.textContent =
+    exportEnabled ?
+      `Exporting students for ${getSelectedClass()}.`
+    : "Choose a class code to enable export."
 }
 
 async function loadClasses(preferredClass = null) {
@@ -26,6 +42,10 @@ function renderClassOptions(preferredClass = null) {
   )
   classSelect.innerHTML = ""
 
+  classSelect.appendChild(
+    newElement("option", { value: "" }, ["Choose a class code"]),
+  )
+
   for (const classOption of availableClasses) {
     const option = document.createElement("option")
     option.value = classOption.value
@@ -35,17 +55,19 @@ function renderClassOptions(preferredClass = null) {
 
   if (!classSelect.options.length) {
     renderClassSearchResults(matchingClasses, classSearch)
+    syncExportState()
     return
   }
 
   const matchingClass =
     Array.from(classSelect.options).find(
       (option) => option.value === preferredClass,
-    )?.value || classSelect.options[0].value
+    )?.value || ""
 
   classSelect.value = matchingClass
   currentClass = matchingClass
   renderClassSearchResults(matchingClasses, classSearch)
+  syncExportState()
 }
 
 function renderClassSearchResults(classes, classSearch) {
@@ -190,7 +212,16 @@ function updateExistingStudentRows(students) {
 async function renderStudents() {
   const requestId = ++studentRenderRequestId
   const selectedClass = getSelectedClass()
-  if (!selectedClass) return
+  syncExportState()
+  if (!selectedClass) {
+    renderedStudentSignature = ""
+    studentsDiv.replaceChildren(
+      newElement("div", { class: "student attendance-student empty-state" }, [
+        "Choose a class code to load students and export attendance.",
+      ]),
+    )
+    return
+  }
   const encodedClass = encodeURIComponent(selectedClass)
   const students = await (
     await fetch(`/api/classStudents?class_name=${encodedClass}`)
@@ -283,6 +314,10 @@ window.addStudent = async function () {
   const fname = firstNameInput.value.trim()
   const lname = lastNameInput.value.trim()
   if (!fname && !lname) return
+  if (!getSelectedClass()) {
+    alert("Choose a class code before adding a student.")
+    return
+  }
 
   const formData = new FormData()
   formData.append("fname", fname)
@@ -319,14 +354,51 @@ window.searchClasses = async function () {
   renderClassOptions(currentClass)
 }
 
+async function exportAttendanceCsv() {
+  const selectedClass = getSelectedClass()
+  if (!selectedClass || selectedClass === "All Students") {
+    alert("Choose a class code before exporting attendance.")
+    return
+  }
+
+  const response = await fetch(
+    `/api/attendance/export?class_name=${encodeURIComponent(selectedClass)}`,
+  )
+  if (!response.ok) {
+    let message = "Unable to export attendance."
+    try {
+      const data = await response.json()
+      message = data.message || message
+    } catch (_error) {
+      // Ignore JSON parse issues and use the default error message.
+    }
+    alert(message)
+    return
+  }
+
+  const blob = await response.blob()
+  const downloadUrl = URL.createObjectURL(blob)
+  const contentDisposition = response.headers.get("Content-Disposition") || ""
+  const filenameMatch = contentDisposition.match(/filename=\"([^\"]+)\"/)
+  const filename = filenameMatch?.[1] || `attendance-${selectedClass}.csv`
+  const downloadLink = document.createElement("a")
+  downloadLink.href = downloadUrl
+  downloadLink.download = filename
+  document.body.appendChild(downloadLink)
+  downloadLink.click()
+  downloadLink.remove()
+  URL.revokeObjectURL(downloadUrl)
+}
+
 classSelect.addEventListener("change", async function () {
   currentClass = getSelectedClass()
   renderedStudentSignature = ""
   await renderStudents()
 })
+exportAttendanceButton.addEventListener("click", exportAttendanceCsv)
 
 ;(async () => {
-  await loadClasses("All Students")
+  await loadClasses()
   await renderStudents()
   setInterval(renderStudents, ATTENDANCE_REFRESH_MS)
 })()
