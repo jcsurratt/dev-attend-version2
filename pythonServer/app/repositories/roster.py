@@ -256,6 +256,10 @@ def _ensure_classes_table(cursor) -> None:
   cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS days_of_week TEXT DEFAULT '';")
 
 
+def _attendance_table_exists(cursor) -> bool:
+  return _table_exists(cursor, "attendance")
+
+
 def _normalize_default_all_students_records(cursor, table_name: str, class_column: Optional[str]) -> None:
   cursor.execute(
     """
@@ -977,6 +981,16 @@ def update_student_class(student_id: str, class_name: str) -> str:
       )
       if cursor.rowcount == 0:
         raise LookupError(f"Student id {student_id} was not found")
+
+      if _attendance_table_exists(cursor):
+        cursor.execute(
+          """
+          UPDATE attendance
+          SET class_name = %s
+          WHERE student_id = %s;
+          """,
+          (selected_class, str(student_id)),
+        )
     connection.commit()
   return selected_class
 
