@@ -39,6 +39,47 @@ def _get_table_columns(cursor, table_name: str) -> set[str]:
   return {row[0] for row in cursor.fetchall()}
 
 
+def _ensure_id_sequence(cursor, table_name: str, id_column: str, sequence_name: str) -> None:
+  cursor.execute(
+    """
+    SELECT column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = %s
+      AND column_name = %s
+    LIMIT 1;
+    """,
+    (table_name, id_column),
+  )
+  row = cursor.fetchone()
+  column_default = row[0] if row else None
+  if column_default and "nextval" in str(column_default):
+    return
+
+  cursor.execute(f"CREATE SEQUENCE IF NOT EXISTS {sequence_name};")
+  cursor.execute(
+    f"""
+    SELECT COALESCE(MAX({id_column}), 0)
+    FROM {table_name};
+    """
+  )
+  max_id = cursor.fetchone()[0]
+  next_value = int(max_id) + 1
+  cursor.execute(f"SELECT setval('{sequence_name}', %s, FALSE);", (next_value,))
+  cursor.execute(
+    f"""
+    ALTER TABLE {table_name}
+    ALTER COLUMN {id_column} SET DEFAULT nextval('{sequence_name}');
+    """
+  )
+  cursor.execute(
+    f"""
+    ALTER SEQUENCE {sequence_name}
+    OWNED BY {table_name}.{id_column};
+    """
+  )
+
+
 def _split_name(full_name: str) -> tuple[str, str]:
   parts = full_name.strip().split(None, 1)
   if not parts:
@@ -64,8 +105,10 @@ def _get_class_column(columns: set[str]) -> Optional[str]:
 
 def _get_student_source(cursor) -> tuple[str, set[str]]:
   if _table_exists(cursor, "roster"):
+    _ensure_id_sequence(cursor, "roster", "stuid", "roster_stuid_seq")
     return ("roster", _get_table_columns(cursor, "roster"))
   if _table_exists(cursor, "students"):
+    _ensure_id_sequence(cursor, "students", "id", "students_id_seq")
     return ("students", _get_table_columns(cursor, "students"))
   raise RuntimeError("No supported student table was found")
 
@@ -180,6 +223,23 @@ def _ensure_student_class_column(
   return ("class_name", refreshed_columns)
 
 
+def _ensure_student_email_column(
+  cursor,
+  table_name: str,
+  columns: set[str],
+) -> set[str]:
+  if "email" in columns:
+    return columns
+
+  cursor.execute(
+    f"""
+    ALTER TABLE {table_name}
+    ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+    """
+  )
+  return _get_table_columns(cursor, table_name)
+
+
 def _ensure_classes_table(cursor) -> None:
   cursor.execute(
     """
@@ -194,6 +254,10 @@ def _ensure_classes_table(cursor) -> None:
   cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS start_time TIME;")
   cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIME;")
   cursor.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS days_of_week TEXT DEFAULT '';")
+
+
+def _attendance_table_exists(cursor) -> bool:
+  return _table_exists(cursor, "attendance")
 
 
 def _normalize_default_all_students_records(cursor, table_name: str, class_column: Optional[str]) -> None:
@@ -641,15 +705,22 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
   ]
 
 
-def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int:
+def add_student(
+  fname: str,
+  lname: str,
+  class_name: Optional[str] = None,
+  email: Optional[str] = None,
+) -> int:
   full_name = " ".join(part for part in (fname.strip(), lname.strip()) if part).strip()
   if not full_name:
     raise ValueError("Student name cannot be empty")
+  normalized_email = (email or "").strip() or None
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
       class_column, columns = _ensure_student_class_column(cursor, table_name, columns)
+      columns = _ensure_student_email_column(cursor, table_name, columns)
       selected_class = _normalize_class_name(class_name)
       if _courses_table_exists(cursor):
         if selected_class != "All Students" and _find_course_by_code(cursor, selected_class) is None:
@@ -665,7 +736,16 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
           (selected_class,),
         )
       if table_name == "roster":
-        if class_column:
+        if class_column and "email" in columns:
+          cursor.execute(
+            f"""
+            INSERT INTO roster (fname, lname, email, {class_column})
+            VALUES (%s, %s, %s, %s)
+            RETURNING stuid;
+            """,
+            (fname, lname, normalized_email, selected_class),
+          )
+        elif class_column:
           cursor.execute(
             f"""
             INSERT INTO roster (fname, lname, {class_column})
@@ -674,6 +754,15 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
             """,
             (fname, lname, selected_class),
           )
+        elif "email" in columns:
+          cursor.execute(
+            """
+            INSERT INTO roster (fname, lname, email)
+            VALUES (%s, %s, %s)
+            RETURNING stuid;
+            """,
+            (fname, lname, normalized_email),
+          )
         else:
           cursor.execute(
             "INSERT INTO roster (fname, lname) VALUES (%s, %s) RETURNING stuid;",
@@ -681,7 +770,16 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
           )
         student_id = cursor.fetchone()[0]
       else:
-        if class_column:
+        if class_column and "email" in columns:
+          cursor.execute(
+            f"""
+            INSERT INTO students (name, email, {class_column})
+            VALUES (%s, %s, %s)
+            RETURNING id;
+            """,
+            (full_name, normalized_email, selected_class),
+          )
+        elif class_column:
           cursor.execute(
             f"""
             INSERT INTO students (name, {class_column})
@@ -689,6 +787,15 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
             RETURNING id;
             """,
             (full_name, selected_class),
+          )
+        elif "email" in columns:
+          cursor.execute(
+            """
+            INSERT INTO students (name, email)
+            VALUES (%s, %s)
+            RETURNING id;
+            """,
+            (full_name, normalized_email),
           )
         else:
           cursor.execute(
@@ -698,6 +805,35 @@ def add_student(fname: str, lname: str, class_name: Optional[str] = None) -> int
         student_id = cursor.fetchone()[0]
     connection.commit()
   return student_id
+
+
+def add_students_bulk(
+  student_rows: list[tuple[str, str, Optional[str]]],
+  class_name: str,
+) -> list[dict[str, object]]:
+  added_students: list[dict[str, object]] = []
+  selected_class = _normalize_class_name(class_name)
+  if selected_class == "All Students":
+    raise ValueError("Please choose a class code before importing students.")
+
+  for fname, lname, email in student_rows:
+    first_name = fname.strip()
+    last_name = lname.strip()
+    if not first_name and not last_name:
+      continue
+    normalized_email = (email or "").strip() or None
+    student_id = add_student(first_name, last_name, selected_class, normalized_email)
+    added_students.append(
+      {
+        "id": student_id,
+        "fname": first_name,
+        "lname": last_name,
+        "class_name": selected_class,
+        "email": normalized_email or "",
+      }
+    )
+
+  return added_students
 
 
 def _get_next_new_student_number(cursor, table_name: str) -> int:
@@ -845,6 +981,16 @@ def update_student_class(student_id: str, class_name: str) -> str:
       )
       if cursor.rowcount == 0:
         raise LookupError(f"Student id {student_id} was not found")
+
+      if _attendance_table_exists(cursor):
+        cursor.execute(
+          """
+          UPDATE attendance
+          SET class_name = %s
+          WHERE student_id = %s;
+          """,
+          (selected_class, str(student_id)),
+        )
     connection.commit()
   return selected_class
 

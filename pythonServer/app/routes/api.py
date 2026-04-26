@@ -1,9 +1,12 @@
+import csv
+import io
 from typing import Literal, Optional, Union
 
 from fastapi import APIRouter, File, Form, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from pythonServer.app.repositories.attendance import (
+  get_attendance_export_for_class,
   get_attendance_by_day,
   get_today_attendance_map,
   mark_absences_for_today,
@@ -15,6 +18,7 @@ from pythonServer.app.repositories.roster import (
   add_camera_student,
   add_class,
   add_student,
+  add_students_bulk,
   delete_student,
   get_available_class_details,
   get_student_name,
@@ -236,6 +240,73 @@ def create_student(
   }
 
 
+@router.post("/api/students/importCsv")
+async def import_students_csv(
+  class_name: str = Form(...),
+  csv_file: UploadFile = File(...),
+):
+  selected_class = class_name.strip()
+  if not selected_class or selected_class == "All Students":
+    return {"status": "error", "message": "Please choose a class code before uploading a CSV."}
+
+  if not csv_file.filename:
+    return {"status": "error", "message": "Choose a CSV file to upload."}
+
+  file_text = (await csv_file.read()).decode("utf-8-sig", errors="ignore")
+  reader = csv.DictReader(io.StringIO(file_text))
+  if not reader.fieldnames:
+    return {"status": "error", "message": "The CSV must include a header row."}
+
+  normalized_field_map = {
+    str(field_name).strip().lower(): field_name
+    for field_name in reader.fieldnames
+    if field_name is not None
+  }
+
+  first_name_field = normalized_field_map.get("first_name") or normalized_field_map.get("fname")
+  last_name_field = normalized_field_map.get("last_name") or normalized_field_map.get("lname")
+  full_name_field = normalized_field_map.get("name") or normalized_field_map.get("full_name")
+
+  if full_name_field is None and first_name_field is None:
+    return {
+      "status": "error",
+      "message": "The CSV must include either name/full_name or first_name/fname columns.",
+    }
+
+  email_field = normalized_field_map.get("email") or normalized_field_map.get("student_email")
+  student_rows: list[tuple[str, str, str]] = []
+  for row in reader:
+    if full_name_field is not None:
+      full_name = str(row.get(full_name_field, "") or "").strip()
+      if not full_name:
+        continue
+      parts = full_name.split(None, 1)
+      fname = parts[0]
+      lname = parts[1] if len(parts) > 1 else ""
+    else:
+      fname = str(row.get(first_name_field, "") or "").strip()
+      lname = str(row.get(last_name_field, "") or "").strip() if last_name_field else ""
+    email = str(row.get(email_field, "") or "").strip() if email_field else ""
+
+    if fname or lname:
+      student_rows.append((fname, lname, email))
+
+  if not student_rows:
+    return {"status": "error", "message": "No students were found in the uploaded CSV."}
+
+  try:
+    students = add_students_bulk(student_rows, selected_class)
+  except Exception as error:
+    return {"status": "error", "message": str(error)}
+
+  return {
+    "status": "success",
+    "class_name": selected_class,
+    "count": len(students),
+    "students": students,
+  }
+
+
 @router.post("/api/cameraRegistrationStudent")
 def create_camera_registration_student(
   class_name: Optional[str] = Form(default=None),
@@ -284,6 +355,43 @@ def change_student_name(
 @router.get("/api/sql/attendanceByDay")
 def attendance_by_day(dayStart: str, dayEnd: str):
   return {"attendance": get_attendance_by_day(dayStart, dayEnd)}
+
+
+@router.get("/api/attendance/export")
+def export_attendance(class_name: str):
+  try:
+    rows = get_attendance_export_for_class(class_name)
+  except Exception as error:
+    return JSONResponse(
+      status_code=400,
+      content={"status": "error", "message": str(error)},
+    )
+
+  output = io.StringIO()
+  writer = csv.DictWriter(
+    output,
+    fieldnames=[
+      "day",
+      "class_code",
+      "student_id",
+      "student_name",
+      "attendance_status",
+      "marked_at",
+      "manual_override",
+    ],
+  )
+  writer.writeheader()
+  writer.writerows(rows)
+  output.seek(0)
+
+  safe_class_name = "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in class_name)
+  filename = f"attendance-{safe_class_name or 'class'}-{rows[0]['day'] if rows else 'today'}.csv"
+
+  return StreamingResponse(
+    iter([output.getvalue()]),
+    media_type="text/csv",
+    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+  )
 
 
 @router.post("/api/attendance/markPresent")

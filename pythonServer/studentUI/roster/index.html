@@ -55,11 +55,22 @@
         ></select>
         <button id="addNewStudent" type="button">Add New Student</button>
       </div>
+      <div class="manual-student-row">
+        <span class="manual-student-label">Import a CSV into one class:</span>
+        <input type="file" id="rosterCsvFile" accept=".csv,text/csv" />
+        <button id="uploadRosterCsv" type="button" disabled>Upload CSV</button>
+        <span id="rosterCsvHint">Choose a class code before uploading.</span>
+        <span id="rosterCsvStatus" aria-live="polite"></span>
+      </div>
       <div id="row">
         <input type="checkbox" id="toggleShowDisabled" />
         <label for="toggleShowDisabled"
           >Show students unregistered to a class only.</label
         >
+      </div>
+      <div class="form-row">
+        <label for="rosterClassFilter">Filter students by class:</label>
+        <select id="rosterClassFilter"></select>
       </div>
       <div id="main"></div>
     </section>
@@ -67,6 +78,6 @@
     <a href="/"><button>Go Home</button></a>
     <script src="/jsGlobals/libloader.js"></script>
     <script src="/jsGlobals/allfuncs.js"></script>
-    <script src="/static/roster/app.js?v=informative-all-students-20260418"></script>
+    <script src="/static/roster/app.js?v=roster-class-student-filter-20260423"></script>
   </body>
 </html>
