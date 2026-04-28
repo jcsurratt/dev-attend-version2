@@ -1,0 +1,7 @@
+day,class_code,student_id,student_name,attendance_status,marked_at,manual_override
+2026-04-28,CSC-221-M1,1027,Riley Brooks,present,2026-04-28T12:04:57.542721,yes
+2026-04-28,CSC-221-M1,1009,Isabella Garcia,tardy,2026-04-28T12:04:56.044712,yes
+2026-04-28,CSC-221-M1,1026,Casey Johnson,tardy,2026-04-28T12:04:54.386238,yes
+2026-04-28,CSC-221-M1,1024,Taylor Nguyen,absent,2026-04-28T12:04:52.993518,yes
+2026-04-28,CSC-221-M1,1025,Morgan Patel,present,2026-04-28T12:04:51.407511,yes
+2026-04-28,CSC-221-M1,1023,Jordan Ramirez,present,2026-04-28T12:04:32.180526,no
