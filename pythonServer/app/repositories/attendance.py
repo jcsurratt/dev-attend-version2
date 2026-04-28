@@ -24,6 +24,10 @@ CLASS_COLUMN_CANDIDATES = (
   "class_id",
 )
 
+# The app's attendance source of truth is the legacy/shared `stu_attend` table.
+# Keep attendance reads and writes here pointed at `stu_attend` unless the team
+# intentionally performs a full schema migration.
+
 
 def _table_exists(cursor, table_name: str) -> bool:
   cursor.execute(
