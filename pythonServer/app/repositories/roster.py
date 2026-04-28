@@ -1029,6 +1029,11 @@ def delete_student(student_id: str) -> None:
     with connection.cursor() as cursor:
       table_name, _columns = _get_student_source(cursor)
       id_column = "stuid" if table_name == "roster" else "id"
+      if table_name == "roster" and _table_exists(cursor, "stu_attend"):
+        cursor.execute(
+          "DELETE FROM stu_attend WHERE stuid = %s;",
+          (student_id,),
+        )
       cursor.execute(
         f"DELETE FROM {table_name} WHERE {id_column} = %s;",
         (student_id,),
