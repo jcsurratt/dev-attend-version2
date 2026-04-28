@@ -7,8 +7,8 @@ html {
   --bg-color: #121212;
   --surface-color: #1e1e1e;
   --text-primary: #e0e0e0;
-  --accent-color: #2765eb; /* Purple */
-  --accent-secondary: #0025e0; /* Teal */
+  --accent-color: #2765eb;
+  --accent-secondary: #0025e0;
   --border-color: #333333;
 }
 
@@ -393,6 +393,14 @@ button:hover {
 
 button:active {
   transform: scale(0.97);
+}
+
+.unregister-button {
+  background: #4178ee;
+}
+
+.unregister-button:hover {
+  background: #76a1fe;
 }
 
 .page-actions {

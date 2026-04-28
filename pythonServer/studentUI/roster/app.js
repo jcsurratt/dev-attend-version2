@@ -340,11 +340,8 @@ async function unregisterStudent(id, container) {
     return
   }
 
-  const actions = container.querySelector(".actions")
-  actions.innerHTML = ""
-  actions.appendChild(createEditNameButton(id, container))
-  actions.appendChild(createRegisterLink(id, false))
-  actions.appendChild(createDeleteButton(id, container))
+  container.dataset.studentRegistered = "false"
+  renderStudentActions(id, container, false)
 }
 
 async function deleteStudent(id, container) {
@@ -475,22 +472,17 @@ function updateStudentClassSelectors(fallbackClass = "All Students") {
   })
 }
 
-function createRegisterLink(id, studentRegistered) {
+function createRegisterLink(id) {
   const button = a.newelem(
     "button",
-    { disabled: studentRegistered, class: "button" },
-    [
-      studentRegistered ?
-        "Student Registered"
-      : "Register Student",
-    ],
+    { class: "button", type: "button" },
+    ["Register Student"],
   )
+  button.addEventListener("click", () => {
+    window.location.href = `/camera?registerId=${id}`
+  })
 
-  return a.newelem(
-    "a",
-    { href: `/camera?registerId=${id}`, class: "link" },
-    [button],
-  )
+  return button
 }
 
 function createUnregisterButton(id, container) {
@@ -531,6 +523,19 @@ function createDeleteButton(id, container) {
   )
   button.addEventListener("click", () => deleteStudent(id, container))
   return button
+}
+
+function renderStudentActions(id, container, studentRegistered) {
+  const actions = container.querySelector(".actions")
+  actions.innerHTML = ""
+  actions.appendChild(createEditNameButton(id, container))
+  actions.appendChild(createPreferredNameButton(id, container))
+  actions.appendChild(
+    studentRegistered ?
+      createUnregisterButton(id, container)
+    : createRegisterLink(id),
+  )
+  actions.appendChild(createDeleteButton(id, container))
 }
 
 function showNameEditor(id, container) {
@@ -640,6 +645,7 @@ function newNode(
       "data-lname": lname,
       "data-pref-name": prefName || "",
       "data-class-name": className,
+      "data-student-registered": studentRegistered ? "true" : "false",
       "data-name-edited": isAutomaticNewStudentName(fname, lname) ? "false" : "true",
     },
     [
@@ -658,14 +664,7 @@ function newNode(
       createStudentClassSelect(id, className, container),
     )
 
-  const actions = container.querySelector(".actions")
-  actions.appendChild(createEditNameButton(id, container))
-  actions.appendChild(createPreferredNameButton(id, container))
-  actions.appendChild(createRegisterLink(id, studentRegistered))
-  if (studentRegistered) {
-    actions.appendChild(createUnregisterButton(id, container))
-  }
-  actions.appendChild(createDeleteButton(id, container))
+  renderStudentActions(id, container, studentRegistered)
 
   main.appendChild(container)
 }
