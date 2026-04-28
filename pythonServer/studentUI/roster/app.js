@@ -14,6 +14,7 @@ const WEEKDAYS = [
   "Saturday",
   "Sunday",
 ]
+const SCHEDULE_SAVE_STATUS_MS = 1500
 
 function getSelectedClass() {
   return classSelect.value || "All Students"
@@ -193,6 +194,11 @@ function createClassScheduleControls(classOption) {
     { class: "button", type: "button" },
     ["Save Schedule"],
   )
+  const saveStatus = a.newelem(
+    "span",
+    { class: "schedule-save-status", "aria-live": "polite" },
+    [],
+  )
   saveButton.addEventListener("click", () => saveClassSchedule(className, controls))
 
   controls.append(
@@ -207,18 +213,21 @@ function createClassScheduleControls(classOption) {
       a.newelem("span", { class: "time-input-error", "aria-live": "polite" }, []),
     ]),
     daysWrap,
+    saveStatus,
     saveButton,
   )
   return controls
 }
 
 async function saveClassSchedule(className, controls) {
+  const saveStatus = controls.querySelector(".schedule-save-status")
   const checkedDays = Array.from(controls.querySelectorAll(".weekday-picker input:checked"))
     .map((checkbox) => checkbox.value)
     .join(",")
   const timeInputs = controls.querySelectorAll(".schedule-time-input")
   const startTime = validateTimeInput(timeInputs[0])
   const endTime = validateTimeInput(timeInputs[1])
+  if (saveStatus) saveStatus.textContent = ""
   if (startTime.error || endTime.error) return
 
   const formData = new FormData()
@@ -239,6 +248,8 @@ async function saveClassSchedule(className, controls) {
     return
   }
 
+  if (saveStatus) saveStatus.textContent = "Saved"
+  await new Promise((resolve) => setTimeout(resolve, SCHEDULE_SAVE_STATUS_MS))
   await loadClasses(className)
 }
 

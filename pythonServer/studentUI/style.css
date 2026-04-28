@@ -160,12 +160,13 @@ body {
    HEADER (UPDATED)
 ===================== */
 header {
+  --header-side-width: 190px;
   background: var(--primary);
   color: white;
   padding: 15px 20px;
   margin: -20px -20px 30px -20px;
   display: grid;
-  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) minmax(150px, 190px);
+  grid-template-columns: var(--header-side-width) minmax(0, 1fr) var(--header-side-width);
   align-items: center;
   gap: 15px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
@@ -205,10 +206,11 @@ header {
 }
 
 header > a:first-child {
+  grid-column: 1;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  width: max-content;
+  width: var(--header-side-width);
   max-width: 100%;
 }
 
@@ -219,7 +221,11 @@ header > a:first-child {
   justify-self: center;
   min-width: 0px;
   width: 100%;
-  position: static;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 8px;
   transform: none;
   text-align: center;
 }
@@ -256,12 +262,14 @@ header .header-text h1 {
 }
 
 .navbar-time#current-time {
-  grid-column: 3;
-  justify-self: end;
   position: static;
   transform: none;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
   font-size: 0.9rem;
   color: var(--border);
+  text-align: center;
 }
 
 /* =====================
@@ -1046,6 +1054,15 @@ select,
   text-transform: none;
 }
 
+.schedule-save-status {
+  min-width: 44px;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: left;
+}
+
 @keyframes time-input-focus-pulse {
   50% {
     caret-color: transparent;
@@ -1100,8 +1117,8 @@ canvas {
 
   header {
     margin: -14px -14px 22px -14px;
-    display: flex;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: var(--header-side-width) minmax(0, 1fr) var(--header-side-width);
     gap: 10px;
     padding: 12px;
   }
@@ -1111,16 +1128,19 @@ canvas {
     width: auto;
     max-width: none;
     object-fit: contain;
+    z-index: 10;
   }
 
   .header-text {
-    flex: 1 1 100%;
+    grid-column: 2;
+    justify-self: center;
     width: 100%;
-    order: 3;
+    min-width: 0;
+    transform: none;
+    text-align: center;
   }
 
   .navbar-time#current-time {
-    order: 2;
     width: auto;
   }
 
@@ -1188,6 +1208,7 @@ canvas {
 
   #logo {
     height: 56px;
+    z-index: 10;
   }
 
   #main .container,

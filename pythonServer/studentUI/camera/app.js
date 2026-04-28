@@ -122,7 +122,8 @@ function setupCameraExitLinks() {
   document.querySelectorAll(".camera-nav-exit").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault()
-      const href = link.getAttribute("href")
+      const href = link.dataset.href
+      if (!href) return
       cancelCameraProcesses()
       window.location.href = href
     })
