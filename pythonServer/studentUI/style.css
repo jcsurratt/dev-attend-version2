@@ -1,23 +1,37 @@
-/* 1. The "Magic" fix for system UI elements */
+/* 1. Let native controls follow the active OS/browser light-dark mode */
 html {
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 :root {
-  --bg-color: #121212;
-  --surface-color: #1e1e1e;
-  --text-primary: #e0e0e0;
+  --bg-color: light-dark(#f5f7fa, #121212);
+  --surface-color: light-dark(#ffffff, #1e1e1e);
+  --text-primary: light-dark(#1a1a1a, #e0e0e0);
   --accent-color: #2765eb;
   --accent-secondary: #0025e0;
-  --border-color: #333333;
+  --border-color: light-dark(#dcdfe3, #333333);
+  /* NRCC-inspired palette */
+  --primary: #003366;
+  --secondary: #005a8d;
+  --accent: #05bbf8;
+  --button: #4bcaf5;
+  --bg-light: #f5f7fa;
+  --bg-dark: #1e1f21;
+  --text-light: #ffffff;
+  --text-dark: #1a1a1a;
+  --card-bg: #ffffff;
+  --border: #dcdfe3;
+  --gray: #6b7280;
 }
 
 body {
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  text-align: center;
   line-height: 1.5;
   margin: 0;
-  padding: 1rem; /* Reduced from 2rem */
+  padding: 20px;
+  background-color: light-dark(var(--bg-light), var(--bg-dark));
+  color: light-dark(var(--text-dark), var(--text-light));
 }
 input[type="checkbox"] {
   appearance: none;
@@ -83,16 +97,7 @@ button {
 
 option {
   background-color: light-dark(#ffffff, #242628);
-  color: #ffffff;
-}
-
-button {
-  background-color: var(--accent-color);
-  color: #000;
-  font-weight: 600;
-  padding: 0.3rem 0.4rem;
-  border: none;
-  cursor: pointer;
+  color: light-dark(#1a1a1a, #ffffff);
 }
 
 h1,
@@ -106,54 +111,20 @@ code {
   background: var(--surface-color);
 }
 
-/* 2. Target the specific arrows (Spin Buttons) */
+/* 2. Keep spin buttons legible in both themes */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
-  /* This forces the browser to use a dark-themed version of the arrows */
-  filter: invert(1) brightness(0.8);
+  filter: none;
   cursor: pointer;
 }
 
-/* 3. Ensure the input itself looks compact and dark */
+/* 3. Ensure number inputs stay consistent with the shared form theme */
 input[type="number"] {
   background-color: var(--surface-color);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   padding: 0.3rem 0.5rem; /* Compact padding */
   border-radius: 4px;
-}
-:root {
-  color-scheme: light dark;
-}
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
-  background-color: light-dark(#f4f6f8, #3b3c3d);
-  /* NRCC-inspired palette */
-  --primary: #003366;
-  --secondary: #005a8d;
-  --accent: #05bbf8;
-  --button: #4bcaf5;
-  --bg-light: #f5f7fa;
-  --bg-dark: #1e1f21;
-  --text-light: #ffffff;
-  --text-dark: #1a1a1a;
-  --card-bg: #ffffff;
-  --border: #dcdfe3;
-  --gray: #6b7280;
-}
-
-/* =====================
-   BASE
-===================== */
-body {
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
-  margin: 0;
-  background-color: light-dark(var(--bg-light), var(--bg-dark));
-  color: light-dark(var(--text-dark), var(--text-light));
 }
 
 /* =====================
@@ -425,11 +396,12 @@ button:active {
 #students {
   max-width: 520px;
   margin: 20px auto;
-  background: var(--card-bg);
+  background: light-dark(var(--card-bg), var(--bg-dark));
+  color: light-dark(var(--text-dark), var(--text-light));
   border-radius: 10px;
   padding: 15px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--border);
+  border: 1px solid light-dark(var(--border), #3f4246);
 }
 
 .student {
@@ -440,7 +412,7 @@ button:active {
 }
 
 .student:hover {
-  background-color: rgba(0, 51, 102, 0.05);
+  background-color: light-dark(rgba(0, 51, 102, 0.05), rgba(255, 255, 255, 0.06));
 }
 
 /* Status colors (more refined) */
@@ -463,15 +435,6 @@ button:active {
   margin-left: 10px;
   font-size: 0.85em;
   color: var(--gray);
-}
-
-#students {
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.student:hover {
-  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .attendance-student {
@@ -771,12 +734,6 @@ select {
   cursor: pointer;
 }
 
-#students {
-  background-color: var(--bg-dark);
-  color: var(--text-light);
-  border: none;
-}
-
 body {
   #main.showDisabled {
     .container:not([data-class-name="All Students"]) {
@@ -935,7 +892,7 @@ select,
 .attendance-status-select,
 #classSelect,
 #cameraClassSelect {
-  color: #ffffff;
+  color: light-dark(var(--text-dark), var(--text-light));
 }
 
 .roster-panel {
