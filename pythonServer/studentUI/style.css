@@ -191,7 +191,6 @@ header > a:first-child {
   grid-row: 1;
   justify-self: center;
   min-width: 0px;
-  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
