@@ -1,23 +1,37 @@
-/* 1. The "Magic" fix for system UI elements */
+/* 1. Let native controls follow the active OS/browser light-dark mode */
 html {
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 :root {
-  --bg-color: #121212;
-  --surface-color: #1e1e1e;
-  --text-primary: #e0e0e0;
-  --accent-color: #2765eb; /* Purple */
-  --accent-secondary: #0025e0; /* Teal */
-  --border-color: #333333;
+  --bg-color: light-dark(#f5f7fa, #121212);
+  --surface-color: light-dark(#ffffff, #1e1e1e);
+  --text-primary: light-dark(#1a1a1a, #e0e0e0);
+  --accent-color: #2765eb;
+  --accent-secondary: #0025e0;
+  --border-color: light-dark(#dcdfe3, #333333);
+  /* NRCC-inspired palette */
+  --primary: #003366;
+  --secondary: #005a8d;
+  --accent: #05bbf8;
+  --button: #4bcaf5;
+  --bg-light: #f5f7fa;
+  --bg-dark: #1e1f21;
+  --text-light: #ffffff;
+  --text-dark: #1a1a1a;
+  --card-bg: #ffffff;
+  --border: #dcdfe3;
+  --gray: #6b7280;
 }
 
 body {
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  text-align: center;
   line-height: 1.5;
   margin: 0;
-  padding: 1rem; /* Reduced from 2rem */
+  padding: 20px;
+  background-color: light-dark(var(--bg-light), var(--bg-dark));
+  color: light-dark(var(--text-dark), var(--text-light));
 }
 input[type="checkbox"] {
   appearance: none;
@@ -83,16 +97,7 @@ button {
 
 option {
   background-color: light-dark(#ffffff, #242628);
-  color: #ffffff;
-}
-
-button {
-  background-color: var(--accent-color);
-  color: #000;
-  font-weight: 600;
-  padding: 0.3rem 0.4rem;
-  border: none;
-  cursor: pointer;
+  color: light-dark(#1a1a1a, #ffffff);
 }
 
 h1,
@@ -106,15 +111,14 @@ code {
   background: var(--surface-color);
 }
 
-/* 2. Target the specific arrows (Spin Buttons) */
+/* 2. Keep spin buttons legible in both themes */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
-  /* This forces the browser to use a dark-themed version of the arrows */
-  filter: invert(1) brightness(0.8);
+  filter: none;
   cursor: pointer;
 }
 
-/* 3. Ensure the input itself looks compact and dark */
+/* 3. Ensure number inputs stay consistent with the shared form theme */
 input[type="number"] {
   background-color: var(--surface-color);
   color: var(--text-primary);
@@ -122,50 +126,18 @@ input[type="number"] {
   padding: 0.3rem 0.5rem; /* Compact padding */
   border-radius: 4px;
 }
-:root {
-  color-scheme: light dark;
-}
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
-  background-color: light-dark(#f4f6f8, #3b3c3d);
-  /* NRCC-inspired palette */
-  --primary: #003366;
-  --secondary: #005a8d;
-  --accent: #05bbf8;
-  --button: #4bcaf5;
-  --bg-light: #f5f7fa;
-  --bg-dark: #1e1f21;
-  --text-light: #ffffff;
-  --text-dark: #1a1a1a;
-  --card-bg: #ffffff;
-  --border: #dcdfe3;
-  --gray: #6b7280;
-}
-
-/* =====================
-   BASE
-===================== */
-body {
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
-  margin: 0;
-  background-color: light-dark(var(--bg-light), var(--bg-dark));
-  color: light-dark(var(--text-dark), var(--text-light));
-}
 
 /* =====================
    HEADER (UPDATED)
 ===================== */
 header {
+  --header-side-width: 190px;
   background: var(--primary);
   color: white;
   padding: 15px 20px;
   margin: -20px -20px 30px -20px;
   display: grid;
-  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) minmax(150px, 190px);
+  grid-template-columns: var(--header-side-width) minmax(0, 1fr) var(--header-side-width);
   align-items: center;
   gap: 15px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
@@ -205,10 +177,11 @@ header {
 }
 
 header > a:first-child {
+  grid-column: 1;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  width: max-content;
+  width: var(--header-side-width);
   max-width: 100%;
 }
 
@@ -259,12 +232,14 @@ header .header-text h1 {
 }
 
 .navbar-time#current-time {
-  grid-column: 3;
-  justify-self: end;
   position: static;
   transform: none;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
   font-size: 0.9rem;
   color: var(--border);
+  text-align: center;
 }
 
 /* =====================
@@ -398,6 +373,14 @@ button:active {
   transform: scale(0.97);
 }
 
+.unregister-button {
+  background: #4178ee;
+}
+
+.unregister-button:hover {
+  background: #76a1fe;
+}
+
 .page-actions {
   display: flex;
   justify-content: center;
@@ -410,13 +393,17 @@ button:active {
    STUDENTS CARD
 ===================== */
 #students {
-  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: fit-content;
   margin: 20px auto;
-  background: var(--card-bg);
+  background: light-dark(var(--card-bg), var(--bg-dark));
+  color: light-dark(var(--text-dark), var(--text-light));
   border-radius: 10px;
   padding: 15px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--border);
+  border: 1px solid light-dark(var(--border), #3f4246);
 }
 
 .student {
@@ -427,7 +414,7 @@ button:active {
 }
 
 .student:hover {
-  background-color: rgba(0, 51, 102, 0.05);
+  background-color: light-dark(rgba(0, 51, 102, 0.05), rgba(255, 255, 255, 0.06));
 }
 
 /* Status colors (more refined) */
@@ -452,23 +439,14 @@ button:active {
   color: var(--gray);
 }
 
-#students {
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.student:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
 .attendance-student {
   display: grid;
-  grid-template-columns: minmax(140px, 0.9fr) minmax(390px, 1.5fr) minmax(250px, 0.95fr);
+  grid-template-columns: minmax(260px, 1.35fr) minmax(320px, 1.2fr) minmax(220px, 0.9fr);
   align-items: center;
   justify-content: center;
-  column-gap: 28px;
+  column-gap: 20px;
   row-gap: 8px;
-  width: min(1100px, 100%);
+  width: 100%;
   overflow: visible;
   padding: 10px 14px;
 }
@@ -476,9 +454,9 @@ button:active {
 .attendance-student-name {
   font-weight: 600;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -488,7 +466,7 @@ button:active {
   justify-content: flex-start;
   gap: 12px;
   min-width: 0;
-  padding-left: 32px;
+  padding-left: 12px;
 }
 
 .attendance-student .student-attendance {
@@ -506,7 +484,7 @@ button:active {
 .attendance-student .attendance-status {
   white-space: normal;
   text-align: right;
-  max-width: 230px;
+  max-width: 320px;
 }
 
 .attendance-student .student-class-select,
@@ -758,12 +736,6 @@ select {
   cursor: pointer;
 }
 
-#students {
-  background-color: var(--bg-dark);
-  color: var(--text-light);
-  border: none;
-}
-
 body {
   #main.showDisabled {
     .container:not([data-class-name="All Students"]) {
@@ -922,7 +894,7 @@ select,
 .attendance-status-select,
 #classSelect,
 #cameraClassSelect {
-  color: #ffffff;
+  color: light-dark(var(--text-dark), var(--text-light));
 }
 
 .roster-panel {
@@ -1041,6 +1013,15 @@ select,
   text-transform: none;
 }
 
+.schedule-save-status {
+  min-width: 44px;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: left;
+}
+
 @keyframes time-input-focus-pulse {
   50% {
     caret-color: transparent;
@@ -1095,8 +1076,8 @@ canvas {
 
   header {
     margin: -14px -14px 22px -14px;
-    display: flex;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: var(--header-side-width) minmax(0, 1fr) var(--header-side-width);
     gap: 10px;
     padding: 12px;
   }
@@ -1106,16 +1087,18 @@ canvas {
     width: auto;
     max-width: none;
     object-fit: contain;
+    z-index: 10;
   }
 
   .header-text {
-    flex: 1 1 100%;
-    width: 100%;
-    order: 3;
+    grid-column: 2;
+    justify-self: center;
+    min-width: 0;
+    transform: none;
+    text-align: center;
   }
 
   .navbar-time#current-time {
-    order: 2;
     width: auto;
   }
 
@@ -1183,6 +1166,7 @@ canvas {
 
   #logo {
     height: 56px;
+    z-index: 10;
   }
 
   #main .container,
