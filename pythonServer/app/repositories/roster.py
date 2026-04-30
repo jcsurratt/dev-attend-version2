@@ -796,7 +796,6 @@ def add_student(
       class_column, columns = _ensure_student_class_column(cursor, table_name, columns)
       columns = _ensure_student_email_column(cursor, table_name, columns)
       columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
-      columns = _ensure_student_email_column(cursor, table_name, columns)
       selected_class = _normalize_class_name(class_name)
       if _courses_table_exists(cursor):
         if selected_class != "All Students" and _find_course_by_code(cursor, selected_class) is None:
@@ -1082,7 +1081,6 @@ def update_student_name(student_id: str, fname: str, lname: str) -> dict[str, st
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
       columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
-      id_column = "stuid" if table_name == "roster" else "id"
       if table_name == "roster":
         cursor.execute(
           """
@@ -1132,7 +1130,6 @@ def update_student_preferred_name(student_id: str, pref_name: str) -> dict[str, 
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
       columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
-      id_column = "stuid" if table_name == "roster" else "id"
       if table_name == "roster":
         cursor.execute(
           """

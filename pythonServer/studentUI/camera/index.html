@@ -4,16 +4,16 @@
   <head>
     <meta charset="UTF-8" />
     <title>Camera - Attendance</title>
-    <link rel="stylesheet" href="/static/style.css?v=header-overlap-fix-2-20260428" />
+    <link rel="stylesheet" href="/static/style.css?v=schedule-attendance-20260418" />
   </head>
   <body>
     <header>
       <a href="/"
         ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
       /></a>
+      <div class="navbar-time" id="current-time"></div>
       <div class="header-text">
         <h1>Attendance System</h1>
-        <div class="navbar-time" id="current-time"></div>
         <nav id="main-nav">
           <div class="nav-links" id="nav-links"></div>
           <div class="nav-auth" id="nav-auth"></div>
@@ -26,7 +26,7 @@
       <h1 id="camera-header"></h1>
       <h2>Look at the camera.</h2>
       <div id="camera-class-picker">
-        <label for="cameraClassSelect">Select a Class:</label>
+        <label for="cameraClassSelect">Assign a class for the new student:</label>
         <select id="cameraClassSelect"></select>
       </div>
 
@@ -49,9 +49,11 @@
 
     <br /><br />
     <div class="page-actions">
-      <button type="button" class="camera-nav-exit" data-href="/">Go Home</button>
+      <a href="/" class="camera-nav-exit"><button>Go Home</button></a>
+      <a href="/attendance" class="camera-nav-exit"><button>Go to Attendance</button></a>
+      <a href="/roster" class="camera-nav-exit"><button>Go to Roster</button></a>
     </div>
 
-    <script src="/static/camera/app.js?v=camera-button-onclick-20260428"></script>
+    <script src="/static/camera/app.js?v=class-dropdown-init-20260421"></script>
   </body>
 </html>

@@ -154,16 +154,16 @@ Example structure:
 from pythonServer.app.db import get_db_connection
 
 
-def add_attendance_record(student_id: int, class_id: int, status: str, timestamp: str) -> int:
+def add_attendance_record(student_id: int, student_name: str, status: str, day: str) -> int:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       cursor.execute(
         """
-        INSERT INTO stu_attend (timestamp, stuid, class_id, status, manual_override)
-        VALUES (%s, %s, %s, %s, FALSE)
-        RETURNING attend_id;
+        INSERT INTO attendance (student_id, student_name, status, day)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id;
         """,
-        (timestamp, student_id, class_id, status),
+        (student_id, student_name, status, day),
       )
       attendance_id = cursor.fetchone()[0]
     connection.commit()

@@ -4,23 +4,23 @@
   <head>
     <meta charset="UTF-8" />
     <title>Attendance System</title>
-    <link rel="stylesheet" href="/static/style.css?v=header-overlap-fix-2-20260428" />
+    <link rel="stylesheet" href="/static/style.css?v=wrap-logo-aspect-20260418" />
   </head>
   <body>
     <header>
       <a href="/"
         ><img id="logo" src="/static/logo.webp" alt="NRCC Logo"
       /></a>
+      <div class="navbar-time" id="current-time"></div>
       <div class="header-text">
         <h1>Attendance System</h1>
-        <div class="navbar-time" id="current-time"></div>
       </div>
     </header>
 
     <div id="auth-section">
-      <button type="button" onclick="window.location.href='/teacher'">Open Dashboard</button>
-      <button type="button" onclick="window.location.href='/roster'">Manage Roster</button>
-      <button type="button" onclick="window.location.href='/camera'">Open Camera</button>
+      <a href="/teacher"><button>Open Dashboard</button></a>
+      <a href="/roster"><button>Manage Roster</button></a>
+      <a href="/camera"><button>Open Camera</button></a>
     </div>
 
     <hr />

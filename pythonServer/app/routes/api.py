@@ -32,7 +32,6 @@ from pythonServer.app.repositories.roster import (
   update_class_schedule,
   update_student_class,
   update_student_name,
-  update_student_preferred_name,
 )
 from pythonServer.app.services.face_recognition import FaceRecognitionService
 from pythonServer.app.services.face_store import FaceStore
@@ -168,11 +167,9 @@ def get_roster_students(class_name: Optional[str] = None):
       student_id,
       is_registered,
       class_name,
-      pref_name,
-      display_name,
       attendance_by_student.get(str(student_id), {}),
     )
-    for fname, lname, student_id, is_registered, class_name, pref_name, display_name in students
+    for fname, lname, student_id, is_registered, class_name in students
   ]
 
 
@@ -350,18 +347,6 @@ def change_student_name(
 ):
   try:
     student = update_student_name(studentId, fname, lname)
-    return {"status": "success", "id": studentId, **student}
-  except Exception as error:
-    return {"status": "error", "message": str(error)}
-
-
-@router.post("/api/students/updatePreferredName")
-def change_student_preferred_name(
-  studentId: str = Form(...),
-  pref_name: str = Form(default=""),
-):
-  try:
-    student = update_student_preferred_name(studentId, pref_name)
     return {"status": "success", "id": studentId, **student}
   except Exception as error:
     return {"status": "error", "message": str(error)}
