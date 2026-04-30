@@ -89,6 +89,20 @@ def _split_name(full_name: str) -> tuple[str, str]:
   return (parts[0], parts[1])
 
 
+def format_student_display_name(
+  fname: str,
+  lname: str = "",
+  pref_name: Optional[str] = None,
+) -> str:
+  first_name = str(fname or "").strip()
+  last_name = str(lname or "").strip()
+  preferred_name = str(pref_name or "").strip()
+
+  if preferred_name and preferred_name.lower() != first_name.lower():
+    return " ".join(part for part in (f"{first_name} ({preferred_name})", last_name) if part).strip()
+  return " ".join(part for part in (first_name, last_name) if part).strip()
+
+
 def _normalize_class_name(class_name: Optional[str]) -> str:
   selected_class = (class_name or "All Students").strip() or "All Students"
   if selected_class == "Default: All Students":
@@ -240,6 +254,23 @@ def _ensure_student_email_column(
   return _get_table_columns(cursor, table_name)
 
 
+def _ensure_student_preferred_name_column(
+  cursor,
+  table_name: str,
+  columns: set[str],
+) -> set[str]:
+  if "pref_name" in columns:
+    return columns
+
+  cursor.execute(
+    f"""
+    ALTER TABLE {table_name}
+    ADD COLUMN IF NOT EXISTS pref_name VARCHAR(100);
+    """
+  )
+  return _get_table_columns(cursor, table_name)
+
+
 def _ensure_classes_table(cursor) -> None:
   cursor.execute(
     """
@@ -283,11 +314,12 @@ def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[st
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
       class_column = _get_class_column(columns)
 
       if table_name == "roster":
         class_select = class_column or "'All Students'"
-        query = f"SELECT stuid, fname, lname, {class_select} FROM roster"
+        query = f"SELECT stuid, fname, lname, COALESCE(pref_name, ''), {class_select} FROM roster"
         params: tuple[object, ...] = ()
         if class_name and class_name != "__all__" and class_column:
           query += f" WHERE {class_column} = %s"
@@ -296,12 +328,16 @@ def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[st
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return {
-          str(row[0]): (row[1], row[2], _normalize_class_name(row[3]))
+          str(row[0]): (
+            format_student_display_name(row[1], row[2], row[3]),
+            "",
+            _normalize_class_name(row[4]),
+          )
           for row in rows
         }
 
       class_select = class_column or "'All Students'"
-      query = f"SELECT id, name, {class_select} FROM students"
+      query = f"SELECT id, name, COALESCE(pref_name, ''), {class_select} FROM students"
       params = ()
       if class_name and class_name != "__all__" and class_column:
         query += f" WHERE {class_column} = %s"
@@ -311,7 +347,11 @@ def get_student_name_map(class_name: Optional[str] = None) -> dict[str, tuple[st
       rows = cursor.fetchall()
 
   return {
-    str(row[0]): (*_split_name(row[1]), _normalize_class_name(row[2]))
+    str(row[0]): (
+      format_student_display_name(*_split_name(row[1]), row[2]),
+      "",
+      _normalize_class_name(row[3]),
+    )
     for row in rows
   }
 
@@ -595,16 +635,21 @@ def get_student_name(student_id: str) -> dict[str, str]:
       table_name, _columns = _get_student_source(cursor)
       if table_name == "roster":
         cursor.execute(
-          "SELECT fname, lname FROM roster WHERE stuid = %s LIMIT 1;",
+          "SELECT fname, lname, COALESCE(pref_name, '') FROM roster WHERE stuid = %s LIMIT 1;",
           (student_id,),
         )
         row = cursor.fetchone()
         if row is None:
           raise LookupError(f"Student id {student_id} was not found")
-        return {"fname": row[0], "lname": row[1], "fullName": f"{row[0]} {row[1]}"}
+        return {
+          "fname": row[0],
+          "lname": row[1],
+          "prefName": row[2] or "",
+          "fullName": format_student_display_name(row[0], row[1], row[2]),
+        }
 
       cursor.execute(
-        "SELECT name FROM students WHERE id = %s LIMIT 1;",
+        "SELECT name, COALESCE(pref_name, '') FROM students WHERE id = %s LIMIT 1;",
         (student_id,),
       )
       row = cursor.fetchone()
@@ -613,19 +658,25 @@ def get_student_name(student_id: str) -> dict[str, str]:
     raise LookupError(f"Student id {student_id} was not found")
 
   fname, lname = _split_name(row[0])
-  return {"fname": fname, "lname": lname, "fullName": row[0]}
+  return {
+    "fname": fname,
+    "lname": lname,
+    "prefName": row[1] or "",
+    "fullName": format_student_display_name(fname, lname, row[1]),
+  }
 
 
-def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, str]]:
+def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, str, str, str]]:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
       if table_name == "roster":
         class_column = _get_class_column(columns)
         if class_column:
           cursor.execute(
             f"""
-            SELECT fname, lname, stuid, {class_column}
+            SELECT fname, lname, COALESCE(pref_name, ''), stuid, {class_column}
             FROM roster
             ORDER BY {class_column}, lname, fname;
             """
@@ -633,24 +684,34 @@ def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, st
         else:
           cursor.execute(
             """
-            SELECT fname, lname, stuid, 'All Students'
+            SELECT fname, lname, COALESCE(pref_name, ''), stuid, 'All Students'
             FROM roster
             ORDER BY lname, fname;
             """
           )
         rows = cursor.fetchall()
         return [
-          (row[0], row[1], row[2], str(row[2]) in registered_ids, _normalize_class_name(row[3]))
+          (
+            row[0],
+            row[1],
+            row[3],
+            str(row[3]) in registered_ids,
+            _normalize_class_name(row[4]),
+            row[2] or "",
+            format_student_display_name(row[0], row[1], row[2]),
+          )
           for row in rows
         ]
 
       order_column = "class_name, name" if "class_name" in columns else "name"
       class_select = "class_name" if "class_name" in columns else "'All Students'"
-      cursor.execute(f"SELECT id, name, {class_select} FROM students ORDER BY {order_column};")
+      cursor.execute(
+        f"SELECT id, name, COALESCE(pref_name, ''), {class_select} FROM students ORDER BY {order_column};"
+      )
       rows = cursor.fetchall()
 
-  students: list[tuple[str, str, int, bool, str]] = []
-  for student_id, full_name, class_name in rows:
+  students: list[tuple[str, str, int, bool, str, str, str]] = []
+  for student_id, full_name, pref_name, class_name in rows:
     fname, lname = _split_name(full_name)
     students.append(
       (
@@ -659,6 +720,8 @@ def get_students(registered_ids: set[str]) -> list[tuple[str, str, int, bool, st
         student_id,
         str(student_id) in registered_ids,
         _normalize_class_name(class_name),
+        pref_name or "",
+        format_student_display_name(fname, lname, pref_name),
       )
     )
   return students
@@ -668,11 +731,12 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
       class_column = _get_class_column(columns)
 
       if table_name == "roster":
         class_select = class_column or "'All Students'"
-        query = f"SELECT stuid, fname, lname, {class_select} FROM roster"
+        query = f"SELECT stuid, fname, lname, COALESCE(pref_name, ''), {class_select} FROM roster"
         params: tuple[object, ...] = ()
         if class_name and class_name != "All Students" and class_column:
           query += f" WHERE {class_column} = %s"
@@ -683,14 +747,17 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
         return [
           {
             "id": row[0],
-            "name": f"{row[1]} {row[2]}".strip(),
-            "class_name": _normalize_class_name(row[3]),
+            "fname": row[1],
+            "lname": row[2],
+            "pref_name": row[3] or "",
+            "name": format_student_display_name(row[1], row[2], row[3]),
+            "class_name": _normalize_class_name(row[4]),
           }
           for row in rows
         ]
 
       class_select = class_column or "'All Students'"
-      query = f"SELECT id, name, {class_select} FROM students"
+      query = f"SELECT id, name, COALESCE(pref_name, ''), {class_select} FROM students"
       params = ()
       if class_name and class_name != "All Students" and class_column:
         query += f" WHERE {class_column} = %s"
@@ -700,7 +767,14 @@ def get_students_for_class(class_name: Optional[str] = None) -> list[dict[str, o
       rows = cursor.fetchall()
 
   return [
-    {"id": row[0], "name": row[1], "class_name": _normalize_class_name(row[2])}
+    {
+      "id": row[0],
+      "fname": _split_name(row[1])[0],
+      "lname": _split_name(row[1])[1],
+      "pref_name": row[2] or "",
+      "name": format_student_display_name(*_split_name(row[1]), row[2]),
+      "class_name": _normalize_class_name(row[3]),
+    }
     for row in rows
   ]
 
@@ -720,6 +794,8 @@ def add_student(
     with connection.cursor() as cursor:
       table_name, columns = _get_student_source(cursor)
       class_column, columns = _ensure_student_class_column(cursor, table_name, columns)
+      columns = _ensure_student_email_column(cursor, table_name, columns)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
       columns = _ensure_student_email_column(cursor, table_name, columns)
       selected_class = _normalize_class_name(class_name)
       if _courses_table_exists(cursor):
@@ -1004,7 +1080,8 @@ def update_student_name(student_id: str, fname: str, lname: str) -> dict[str, st
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      table_name, _columns = _get_student_source(cursor)
+      table_name, columns = _get_student_source(cursor)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
       id_column = "stuid" if table_name == "roster" else "id"
       if table_name == "roster":
         cursor.execute(
@@ -1015,6 +1092,12 @@ def update_student_name(student_id: str, fname: str, lname: str) -> dict[str, st
           """,
           (first_name, last_name, student_id),
         )
+        updated_rows = cursor.rowcount
+        cursor.execute(
+          "SELECT COALESCE(pref_name, '') FROM roster WHERE stuid = %s LIMIT 1;",
+          (student_id,),
+        )
+        pref_name = (cursor.fetchone() or [""])[0]
       else:
         cursor.execute(
           """
@@ -1024,11 +1107,68 @@ def update_student_name(student_id: str, fname: str, lname: str) -> dict[str, st
           """,
           (full_name, student_id),
         )
-      if cursor.rowcount == 0:
+        updated_rows = cursor.rowcount
+        cursor.execute(
+          "SELECT COALESCE(pref_name, '') FROM students WHERE id = %s LIMIT 1;",
+          (student_id,),
+        )
+        pref_name = (cursor.fetchone() or [""])[0]
+      if updated_rows == 0:
         raise LookupError(f"Student id {student_id} was not found")
     connection.commit()
 
-  return {"fname": first_name, "lname": last_name, "fullName": full_name}
+  return {
+    "fname": first_name,
+    "lname": last_name,
+    "prefName": pref_name or "",
+    "fullName": format_student_display_name(first_name, last_name, pref_name),
+  }
+
+
+def update_student_preferred_name(student_id: str, pref_name: str) -> dict[str, str]:
+  preferred_name = pref_name.strip()
+
+  with get_db_connection() as connection:
+    with connection.cursor() as cursor:
+      table_name, columns = _get_student_source(cursor)
+      columns = _ensure_student_preferred_name_column(cursor, table_name, columns)
+      id_column = "stuid" if table_name == "roster" else "id"
+      if table_name == "roster":
+        cursor.execute(
+          """
+          UPDATE roster
+          SET pref_name = NULLIF(%s, '')
+          WHERE stuid = %s
+          RETURNING fname, lname, COALESCE(pref_name, '');
+          """,
+          (preferred_name, student_id),
+        )
+      else:
+        cursor.execute(
+          """
+          UPDATE students
+          SET pref_name = NULLIF(%s, '')
+          WHERE id = %s
+          RETURNING name, COALESCE(pref_name, '');
+          """,
+          (preferred_name, student_id),
+        )
+      row = cursor.fetchone()
+      if row is None:
+        raise LookupError(f"Student id {student_id} was not found")
+    connection.commit()
+
+  if table_name == "roster":
+    return {
+      "prefName": row[2] or "",
+      "fullName": format_student_display_name(row[0], row[1], row[2]),
+    }
+
+  fname, lname = _split_name(row[0])
+  return {
+    "prefName": row[1] or "",
+    "fullName": format_student_display_name(fname, lname, row[1]),
+  }
 
 
 def delete_student(student_id: str) -> None:
@@ -1036,6 +1176,11 @@ def delete_student(student_id: str) -> None:
     with connection.cursor() as cursor:
       table_name, _columns = _get_student_source(cursor)
       id_column = "stuid" if table_name == "roster" else "id"
+      if table_name == "roster" and _table_exists(cursor, "stu_attend"):
+        cursor.execute(
+          "DELETE FROM stu_attend WHERE stuid = %s;",
+          (student_id,),
+        )
       cursor.execute(
         f"DELETE FROM {table_name} WHERE {id_column} = %s;",
         (student_id,),

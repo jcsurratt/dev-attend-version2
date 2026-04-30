@@ -4,14 +4,14 @@
   <head>
     <meta charset="UTF-8" />
     <title>Roster</title>
-    <link rel="stylesheet" href="/static/style.css?v=roster-class-filter-ui-20260418" />
+    <link rel="stylesheet" href="/static/style.css?v=header-overlap-fix-2-20260428" />
   </head>
   <body>
     <header>
       <a href="/"><img id="logo" src="/static/logo.webp" alt="NRCC Logo" /></a>
-      <div class="navbar-time" id="current-time"></div>
       <div class="header-text">
         <h1>Attendance System</h1>
+        <div class="navbar-time" id="current-time"></div>
         <nav id="main-nav">
           <div class="nav-links" id="nav-links"></div>
           <div class="nav-auth" id="nav-auth"></div>
@@ -75,9 +75,9 @@
       <div id="main"></div>
     </section>
     <br />
-    <a href="/"><button>Go Home</button></a>
+    <button type="button" onclick="window.location.href='/'">Go Home</button>
     <script src="/jsGlobals/libloader.js"></script>
     <script src="/jsGlobals/allfuncs.js"></script>
-    <script src="/static/roster/app.js?v=roster-csv-import-20260428"></script>
+    <script src="/static/roster/app.js?v=roster-merge-fixes-20260430"></script>
   </body>
 </html>
