@@ -291,6 +291,18 @@ def _attendance_table_exists(cursor) -> bool:
   return _table_exists(cursor, "attendance")
 
 
+def _delete_attendance_for_class(cursor, class_name: str) -> None:
+  if not _attendance_table_exists(cursor):
+    return
+  cursor.execute("DELETE FROM attendance WHERE class_name = %s;", (class_name,))
+
+
+def _delete_attendance_for_student(cursor, student_id: str) -> None:
+  if not _attendance_table_exists(cursor):
+    return
+  cursor.execute("DELETE FROM attendance WHERE student_id = %s;", (str(student_id),))
+
+
 def _normalize_default_all_students_records(cursor, table_name: str, class_column: Optional[str]) -> None:
   cursor.execute(
     """
@@ -596,8 +608,7 @@ def remove_class(name: str) -> None:
             """,
             ("All Students", class_name),
           )
-        if _table_exists(cursor, "stu_attend"):
-          cursor.execute("DELETE FROM stu_attend WHERE class_id = %s;", (course["class_id"],))
+        _delete_attendance_for_class(cursor, class_name)
         cursor.execute("DELETE FROM courses WHERE class_id = %s;", (course["class_id"],))
         connection.commit()
         return
@@ -1173,11 +1184,7 @@ def delete_student(student_id: str) -> None:
     with connection.cursor() as cursor:
       table_name, _columns = _get_student_source(cursor)
       id_column = "stuid" if table_name == "roster" else "id"
-      if table_name == "roster" and _table_exists(cursor, "stu_attend"):
-        cursor.execute(
-          "DELETE FROM stu_attend WHERE stuid = %s;",
-          (student_id,),
-        )
+      _delete_attendance_for_student(cursor, student_id)
       cursor.execute(
         f"DELETE FROM {table_name} WHERE {id_column} = %s;",
         (student_id,),

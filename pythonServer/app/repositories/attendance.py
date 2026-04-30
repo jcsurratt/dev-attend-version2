@@ -24,10 +24,6 @@ CLASS_COLUMN_CANDIDATES = (
   "class_id",
 )
 
-# The app's attendance source of truth is the legacy/shared `stu_attend` table.
-# Keep attendance reads and writes here pointed at `stu_attend` unless the team
-# intentionally performs a full schema migration.
-
 
 def _table_exists(cursor, table_name: str) -> bool:
   cursor.execute(
@@ -54,46 +50,45 @@ def _get_table_columns(cursor, table_name: str) -> set[str]:
   return {row[0] for row in cursor.fetchall()}
 
 
-def _ensure_student_preferred_name_column(cursor) -> None:
-  if _table_exists(cursor, "roster"):
-    cursor.execute("ALTER TABLE roster ADD COLUMN IF NOT EXISTS pref_name VARCHAR(100);")
-
-
-def _student_display_name_sql(alias: str = "r") -> str:
-  return (
-    "TRIM(CONCAT("
-    f"{alias}.fname, "
-    f"CASE WHEN NULLIF(COALESCE({alias}.pref_name, ''), '') IS NOT NULL "
-    f"AND LOWER(COALESCE({alias}.pref_name, '')) <> LOWER(COALESCE({alias}.fname, '')) "
-    f"THEN CONCAT(' (', {alias}.pref_name, ')') ELSE '' END, "
-    f"' ', {alias}.lname))"
-  )
-
-
-def _ensure_stu_attend_table(cursor) -> None:
-  _ensure_student_preferred_name_column(cursor)
+def _ensure_attendance_table(cursor) -> None:
   cursor.execute(
     """
-    CREATE TABLE IF NOT EXISTS stu_attend (
-      attend_id BIGSERIAL PRIMARY KEY,
-      timestamp TIMESTAMP,
-      stuid BIGINT REFERENCES roster(stuid),
-      class_id BIGINT REFERENCES courses(class_id)
+    CREATE TABLE IF NOT EXISTS attendance (
+      id BIGSERIAL PRIMARY KEY,
+      student_name VARCHAR(255) NOT NULL,
+      day DATE NOT NULL DEFAULT CURRENT_DATE,
+      student_id VARCHAR(50) NOT NULL,
+      class_name VARCHAR(100) NOT NULL DEFAULT 'All Students',
+      status VARCHAR(20) NOT NULL DEFAULT 'present',
+      marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      manual_override BOOLEAN NOT NULL DEFAULT FALSE
     );
     """
   )
-  cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP;")
-  cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'present';")
-  cursor.execute("ALTER TABLE stu_attend ADD COLUMN IF NOT EXISTS manual_override BOOLEAN DEFAULT FALSE;")
-  columns = _get_table_columns(cursor, "stu_attend")
-  if "attend_timestamp" in columns:
-    cursor.execute(
-      """
-      UPDATE stu_attend
-      SET timestamp = attend_timestamp
-      WHERE timestamp IS NULL AND attend_timestamp IS NOT NULL;
-      """
-    )
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS student_name VARCHAR(255);")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS day DATE;")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS student_id VARCHAR(50);")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS class_name VARCHAR(100) DEFAULT 'All Students';")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'present';")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+  cursor.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS manual_override BOOLEAN DEFAULT FALSE;")
+  cursor.execute(
+    """
+    UPDATE attendance
+    SET day = COALESCE(day, CURRENT_DATE),
+        student_id = COALESCE(NULLIF(TRIM(student_id), ''), ''),
+        class_name = COALESCE(NULLIF(TRIM(class_name), ''), 'All Students'),
+        status = COALESCE(NULLIF(TRIM(status), ''), 'present'),
+        marked_at = COALESCE(marked_at, CURRENT_TIMESTAMP),
+        manual_override = COALESCE(manual_override, FALSE)
+    WHERE day IS NULL
+       OR student_id IS NULL
+       OR class_name IS NULL
+       OR status IS NULL
+       OR marked_at IS NULL
+       OR manual_override IS NULL;
+    """
+  )
 
 
 def _get_student_source(cursor) -> tuple[str, str, set[str]]:
@@ -205,49 +200,70 @@ def _course_code_sql(alias: str = "c") -> str:
   )
 
 
-def _get_course_by_code(cursor, class_name: str) -> Optional[dict[str, object]]:
+def _get_class_schedule(cursor, class_name: str) -> Optional[dict[str, object]]:
   normalized_class = _normalize_class_name(class_name)
-  if normalized_class == "All Students" or not _table_exists(cursor, "courses"):
+  if normalized_class == "All Students":
     return None
 
-  course_code_sql = _course_code_sql("c")
-  cursor.execute(
-    f"""
-    SELECT c.class_id, {course_code_sql} AS class_name, c.meeting_days, c.meeting_time
-    FROM courses c
-    WHERE {course_code_sql} = %s
-    LIMIT 1;
-    """,
-    (normalized_class,),
-  )
-  row = cursor.fetchone()
-  if row is None:
-    return None
+  if _table_exists(cursor, "courses"):
+    course_code_sql = _course_code_sql("c")
+    cursor.execute(
+      f"""
+      SELECT c.class_id, {course_code_sql}, c.meeting_days, c.meeting_time
+      FROM courses c
+      WHERE {course_code_sql} = %s
+      LIMIT 1;
+      """,
+      (normalized_class,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+      return None
+    start_time, end_time = _parse_meeting_time(row[3])
+    return {
+      "class_id": row[0],
+      "class_name": row[1],
+      "start_time": start_time,
+      "end_time": end_time,
+      "days_of_week": _normalize_meeting_days(row[2]),
+    }
 
-  start_time, end_time = _parse_meeting_time(row[3])
-  return {
-    "class_id": row[0],
-    "class_name": row[1],
-    "start_time": start_time,
-    "end_time": end_time,
-    "days_of_week": _normalize_meeting_days(row[2]),
-  }
+  if _table_exists(cursor, "classes"):
+    cursor.execute(
+      """
+      SELECT name, start_time, end_time, COALESCE(days_of_week, '')
+      FROM classes
+      WHERE name = %s
+      LIMIT 1;
+      """,
+      (normalized_class,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+      return None
+    return {
+      "class_id": row[0],
+      "class_name": row[0],
+      "start_time": row[1],
+      "end_time": row[2],
+      "days_of_week": row[3] or "",
+    }
+
+  return None
 
 
 def _resolve_student(cursor, student_name: str, student_id: Optional[str], class_name: str) -> tuple[str, str]:
-  normalized_name = student_name.strip()
-  normalized_class = _normalize_class_name(class_name)
   table_name, id_column, columns = _get_student_source(cursor)
   class_column = _student_class_column(columns)
+  normalized_class = _normalize_class_name(class_name)
 
   if student_id is not None and str(student_id).strip():
     student_key = str(student_id).strip()
     if table_name == "roster":
-      display_name_sql = _student_display_name_sql("r")
       cursor.execute(
-        f"""
-        SELECT {display_name_sql}
-        FROM roster r
+        """
+        SELECT TRIM(CONCAT(fname, ' ', lname))
+        FROM roster
         WHERE stuid = %s
         LIMIT 1;
         """,
@@ -264,35 +280,24 @@ def _resolve_student(cursor, student_name: str, student_id: Optional[str], class
         (student_key,),
       )
     row = cursor.fetchone()
-    return (student_key, row[0] if row and row[0] else normalized_name)
+    return (student_key, row[0] if row and row[0] else student_name.strip())
 
   if table_name == "roster":
-    display_name_sql = _student_display_name_sql("r")
-    params: tuple[object, ...]
-    query = (
-      f"SELECT stuid, {display_name_sql} "
-      "FROM roster r "
-      f"WHERE ({display_name_sql} = %s OR TRIM(CONCAT(r.fname, ' ', r.lname)) = %s)"
-    )
-    params = (normalized_name, normalized_name)
-    if class_column:
-      query += f" AND COALESCE(r.{class_column}, 'All Students') = %s"
-      params = (normalized_name, normalized_name, normalized_class)
-    query += " ORDER BY stuid LIMIT 1;"
-    cursor.execute(query, params)
+    name_sql = "TRIM(CONCAT(fname, ' ', lname))"
+    base_query = f"SELECT stuid, {name_sql} FROM roster WHERE {name_sql} = %s"
   else:
-    query = "SELECT id, name FROM students WHERE name = %s"
-    params = (normalized_name,)
-    if class_column:
-      query += f" AND COALESCE({class_column}, 'All Students') = %s"
-      params = (normalized_name, normalized_class)
-    query += f" ORDER BY {id_column} LIMIT 1;"
-    cursor.execute(query, params)
+    base_query = "SELECT id, name FROM students WHERE name = %s"
 
+  params: tuple[object, ...] = (student_name.strip(),)
+  if class_column:
+    base_query += f" AND COALESCE({class_column}, 'All Students') = %s"
+    params = (student_name.strip(), normalized_class)
+  base_query += f" ORDER BY {id_column} LIMIT 1;"
+  cursor.execute(base_query, params)
   row = cursor.fetchone()
   if row is None:
     raise LookupError(f"Student {student_name} was not found")
-  return (str(row[0]), row[1] or normalized_name)
+  return (str(row[0]), row[1] or student_name.strip())
 
 
 def _serialize_attendance(row) -> dict[str, object]:
@@ -311,25 +316,13 @@ def _serialize_attendance(row) -> dict[str, object]:
 def get_attendance_by_day(day_start: str, day_end: str) -> list[dict[str, object]]:
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      course_code_sql = _course_code_sql("c")
-      display_name_sql = _student_display_name_sql("r")
+      _ensure_attendance_table(cursor)
       cursor.execute(
-        f"""
-        SELECT
-          sa.attend_id,
-          {display_name_sql} AS student_name,
-          DATE(sa.timestamp) AS day,
-          sa.stuid,
-          COALESCE({course_code_sql}, 'All Students') AS class_name,
-          COALESCE(sa.status, 'present') AS status,
-          sa.timestamp,
-          COALESCE(sa.manual_override, FALSE) AS manual_override
-        FROM stu_attend sa
-        LEFT JOIN roster r ON r.stuid = sa.stuid
-        LEFT JOIN courses c ON c.class_id = sa.class_id
-        WHERE DATE(sa.timestamp) BETWEEN %s AND %s
-        ORDER BY DATE(sa.timestamp) DESC, student_name;
+        """
+        SELECT id, student_name, day, student_id, class_name, status, marked_at, manual_override
+        FROM attendance
+        WHERE day BETWEEN %s AND %s
+        ORDER BY day DESC, student_name, id DESC;
         """,
         (day_start, day_end),
       )
@@ -355,35 +348,25 @@ def mark_student_attendance(
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      course = _get_course_by_code(cursor, selected_class)
-      if course is None:
+      _ensure_attendance_table(cursor)
+      schedule = _get_class_schedule(cursor, selected_class)
+      if schedule is None:
         raise LookupError(f"Course {selected_class} was not found")
 
       student_key, resolved_name = _resolve_student(cursor, name, student_id, selected_class)
-      status = _status_for_schedule(course, now)
-      display_name_sql = _student_display_name_sql("r")
+      status = _status_for_schedule(schedule, now)
 
       cursor.execute(
-        f"""
-        SELECT
-          sa.attend_id,
-          {display_name_sql} AS student_name,
-          DATE(sa.timestamp) AS day,
-          sa.stuid,
-          %s AS class_name,
-          COALESCE(sa.status, 'present') AS status,
-          sa.timestamp,
-          COALESCE(sa.manual_override, FALSE) AS manual_override
-        FROM stu_attend sa
-        LEFT JOIN roster r ON r.stuid = sa.stuid
-        WHERE sa.stuid = %s
-          AND sa.class_id = %s
-          AND DATE(sa.timestamp) = CURRENT_DATE
-        ORDER BY sa.attend_id DESC
+        """
+        SELECT id, student_name, day, student_id, class_name, status, marked_at, manual_override
+        FROM attendance
+        WHERE student_id = %s
+          AND class_name = %s
+          AND day = CURRENT_DATE
+        ORDER BY id DESC
         LIMIT 1;
         """,
-        (selected_class, student_key, course["class_id"]),
+        (student_key, selected_class),
       )
       existing_row = cursor.fetchone()
 
@@ -401,23 +384,24 @@ def mark_student_attendance(
 
         cursor.execute(
           """
-          UPDATE stu_attend
-          SET timestamp = COALESCE(timestamp, %s),
-              status = %s
-          WHERE attend_id = %s
-          RETURNING attend_id, %s, DATE(COALESCE(timestamp, %s)), stuid, %s, status, COALESCE(timestamp, %s), COALESCE(manual_override, FALSE);
+          UPDATE attendance
+          SET student_name = %s,
+              status = %s,
+              marked_at = %s
+          WHERE id = %s
+          RETURNING id, student_name, day, student_id, class_name, status, marked_at, manual_override;
           """,
-          (now, next_status, existing["id"], resolved_name, now, selected_class, now),
+          (resolved_name, next_status, now, existing["id"]),
         )
         row = cursor.fetchone()
       else:
         cursor.execute(
           """
-          INSERT INTO stu_attend (timestamp, stuid, class_id, status, manual_override)
-          VALUES (%s, %s, %s, %s, FALSE)
-          RETURNING attend_id, %s, DATE(timestamp), stuid, %s, status, timestamp, COALESCE(manual_override, FALSE);
+          INSERT INTO attendance (student_name, day, student_id, class_name, status, marked_at, manual_override)
+          VALUES (%s, CURRENT_DATE, %s, %s, %s, %s, FALSE)
+          RETURNING id, student_name, day, student_id, class_name, status, marked_at, manual_override;
           """,
-          (now, student_key, course["class_id"], status, resolved_name, selected_class),
+          (resolved_name, student_key, selected_class, status, now),
         )
         row = cursor.fetchone()
     connection.commit()
@@ -431,67 +415,69 @@ def mark_student_present(student_name: str) -> dict[str, object]:
 
 def mark_absences_for_today() -> None:
   now = datetime.now()
+
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      if not _table_exists(cursor, "roster") or not _table_exists(cursor, "courses"):
-        return
-
-      _table_name, _id_column, columns = _get_student_source(cursor)
+      _ensure_attendance_table(cursor)
+      table_name, id_column, columns = _get_student_source(cursor)
       class_column = _student_class_column(columns)
       if class_column is None:
         return
 
-      course_code_sql = _course_code_sql("c")
-      display_name_sql = _student_display_name_sql("r")
-      cursor.execute(
-        f"""
-        SELECT
-          r.stuid,
-          {display_name_sql} AS student_name,
-          {course_code_sql} AS class_name,
-          c.class_id,
-          c.meeting_days,
-          c.meeting_time
-        FROM roster r
-        JOIN courses c
-          ON COALESCE(r.{class_column}, 'All Students') = {course_code_sql}
-        WHERE COALESCE(r.{class_column}, 'All Students') <> 'All Students'
-        ORDER BY r.stuid;
-        """
-      )
+      if table_name == "roster":
+        cursor.execute(
+          f"""
+          SELECT {id_column}, TRIM(CONCAT(fname, ' ', lname)), COALESCE({class_column}, 'All Students')
+          FROM roster
+          WHERE COALESCE({class_column}, 'All Students') <> 'All Students'
+          ORDER BY {id_column};
+          """
+        )
+      else:
+        cursor.execute(
+          f"""
+          SELECT {id_column}, name, COALESCE({class_column}, 'All Students')
+          FROM students
+          WHERE COALESCE({class_column}, 'All Students') <> 'All Students'
+          ORDER BY {id_column};
+          """
+        )
+      students = cursor.fetchall()
 
-      for student_id, student_name, class_name, class_id, meeting_days, meeting_time in cursor.fetchall():
-        start_time, end_time = _parse_meeting_time(meeting_time)
-        schedule = {
-          "start_time": start_time,
-          "end_time": end_time,
-          "days_of_week": _normalize_meeting_days(meeting_days),
-        }
+      for student_id, student_name, class_name in students:
+        normalized_class = _normalize_class_name(class_name)
+        schedule = _get_class_schedule(cursor, normalized_class)
+        if schedule is None:
+          continue
+
         end_at = _combine_today(now, schedule.get("end_time"))
-        if end_at is None or now <= end_at or not _is_class_today(str(schedule.get("days_of_week") or ""), now):
+        if end_at is None:
+          continue
+        if now <= end_at:
+          continue
+        if not _is_class_today(str(schedule.get("days_of_week") or ""), now):
           continue
 
         cursor.execute(
           """
           SELECT 1
-          FROM stu_attend
-          WHERE stuid = %s
-            AND class_id = %s
-            AND DATE(timestamp) = CURRENT_DATE
+          FROM attendance
+          WHERE student_id = %s
+            AND class_name = %s
+            AND day = CURRENT_DATE
           LIMIT 1;
           """,
-          (student_id, class_id),
+          (str(student_id), normalized_class),
         )
         if cursor.fetchone() is not None:
           continue
 
         cursor.execute(
           """
-          INSERT INTO stu_attend (timestamp, stuid, class_id, status, manual_override)
-          VALUES (%s, %s, %s, 'absent', FALSE);
+          INSERT INTO attendance (student_name, day, student_id, class_name, status, marked_at, manual_override)
+          VALUES (%s, CURRENT_DATE, %s, %s, 'absent', %s, FALSE);
           """,
-          (now, student_id, class_id),
+          (student_name, str(student_id), normalized_class, now),
         )
     connection.commit()
 
@@ -500,25 +486,13 @@ def get_today_attendance_map() -> dict[str, dict[str, object]]:
   mark_absences_for_today()
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      course_code_sql = _course_code_sql("c")
-      display_name_sql = _student_display_name_sql("r")
+      _ensure_attendance_table(cursor)
       cursor.execute(
-        f"""
-        SELECT
-          sa.attend_id,
-          {display_name_sql} AS student_name,
-          DATE(sa.timestamp) AS day,
-          sa.stuid,
-          COALESCE({course_code_sql}, 'All Students') AS class_name,
-          COALESCE(sa.status, 'present') AS status,
-          sa.timestamp,
-          COALESCE(sa.manual_override, FALSE) AS manual_override
-        FROM stu_attend sa
-        LEFT JOIN roster r ON r.stuid = sa.stuid
-        LEFT JOIN courses c ON c.class_id = sa.class_id
-        WHERE DATE(sa.timestamp) = CURRENT_DATE
-        ORDER BY sa.timestamp DESC, sa.attend_id DESC;
+        """
+        SELECT id, student_name, day, student_id, class_name, status, marked_at, manual_override
+        FROM attendance
+        WHERE day = CURRENT_DATE
+        ORDER BY marked_at DESC, id DESC;
         """
       )
       rows = cursor.fetchall()
@@ -550,46 +524,47 @@ def update_attendance_status(
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      course = _get_course_by_code(cursor, selected_class)
-      if course is None:
+      _ensure_attendance_table(cursor)
+      schedule = _get_class_schedule(cursor, selected_class)
+      if schedule is None:
         raise LookupError(f"Course {selected_class} was not found")
 
       student_key, resolved_name = _resolve_student(cursor, student_name, student_id, selected_class)
       cursor.execute(
         """
-        SELECT attend_id
-        FROM stu_attend
-        WHERE stuid = %s
-          AND class_id = %s
-          AND DATE(timestamp) = CURRENT_DATE
-        ORDER BY attend_id DESC
+        SELECT id
+        FROM attendance
+        WHERE student_id = %s
+          AND class_name = %s
+          AND day = CURRENT_DATE
+        ORDER BY id DESC
         LIMIT 1;
         """,
-        (student_key, course["class_id"]),
+        (student_key, selected_class),
       )
       existing = cursor.fetchone()
 
       if existing is None:
         cursor.execute(
           """
-          INSERT INTO stu_attend (timestamp, stuid, class_id, status, manual_override)
-          VALUES (%s, %s, %s, %s, TRUE)
-          RETURNING attend_id, %s, DATE(timestamp), stuid, %s, status, timestamp, TRUE;
+          INSERT INTO attendance (student_name, day, student_id, class_name, status, marked_at, manual_override)
+          VALUES (%s, CURRENT_DATE, %s, %s, %s, %s, TRUE)
+          RETURNING id, student_name, day, student_id, class_name, status, marked_at, manual_override;
           """,
-          (now, student_key, course["class_id"], selected_status, resolved_name, selected_class),
+          (resolved_name, student_key, selected_class, selected_status, now),
         )
       else:
         cursor.execute(
           """
-          UPDATE stu_attend
-          SET timestamp = %s,
+          UPDATE attendance
+          SET student_name = %s,
               status = %s,
+              marked_at = %s,
               manual_override = TRUE
-          WHERE attend_id = %s
-          RETURNING attend_id, %s, DATE(timestamp), stuid, %s, status, timestamp, TRUE;
+          WHERE id = %s
+          RETURNING id, student_name, day, student_id, class_name, status, marked_at, manual_override;
           """,
-          (now, selected_status, existing[0], resolved_name, selected_class),
+          (resolved_name, selected_status, now, existing[0]),
         )
       row = cursor.fetchone()
     connection.commit()
@@ -610,30 +585,16 @@ def get_attendance_export_for_class(class_name: str) -> list[dict[str, object]]:
 
   with get_db_connection() as connection:
     with connection.cursor() as cursor:
-      _ensure_stu_attend_table(cursor)
-      course = _get_course_by_code(cursor, selected_class)
-      if course is None:
-        raise LookupError(f"Course {selected_class} was not found")
-
-      display_name_sql = _student_display_name_sql("r")
+      _ensure_attendance_table(cursor)
       cursor.execute(
-        f"""
-        SELECT
-          sa.attend_id,
-          {display_name_sql} AS student_name,
-          DATE(sa.timestamp) AS day,
-          sa.stuid,
-          %s AS class_name,
-          COALESCE(sa.status, 'present') AS status,
-          sa.timestamp,
-          COALESCE(sa.manual_override, FALSE) AS manual_override
-        FROM stu_attend sa
-        LEFT JOIN roster r ON r.stuid = sa.stuid
-        WHERE sa.class_id = %s
-          AND DATE(sa.timestamp) = CURRENT_DATE
-        ORDER BY sa.timestamp DESC, sa.attend_id DESC;
+        """
+        SELECT id, student_name, day, student_id, class_name, status, marked_at, manual_override
+        FROM attendance
+        WHERE class_name = %s
+          AND day = CURRENT_DATE
+        ORDER BY marked_at DESC, id DESC;
         """,
-        (selected_class, course["class_id"]),
+        (selected_class,),
       )
       for row in cursor.fetchall():
         record = _serialize_attendance(row)
