@@ -1022,6 +1022,26 @@ select,
   text-align: left;
 }
 
+.add-student-action {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+#addStudentStatus {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  min-width: 92px;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: left;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
 @keyframes time-input-focus-pulse {
   50% {
     caret-color: transparent;

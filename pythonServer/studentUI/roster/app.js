@@ -6,10 +6,12 @@ var classSelect = a.qs("#class_name")
 var classList = a.qs("#classList")
 var rosterClassFilter = a.qs("#rosterClassFilter")
 var addNewStudentButton = a.qs("#addNewStudent")
+var addStudentStatus = a.qs("#addStudentStatus")
 var rosterCsvFile = a.qs("#rosterCsvFile")
 var uploadRosterCsv = a.qs("#uploadRosterCsv")
 var rosterCsvHint = a.qs("#rosterCsvHint")
 var rosterCsvStatus = a.qs("#rosterCsvStatus")
+var addStudentStatusTimer = null
 var classes = []
 const WEEKDAYS = [
   "Monday",
@@ -46,6 +48,17 @@ function syncClassAssignmentState() {
 function setRosterCsvStatus(message, isError = false) {
   rosterCsvStatus.textContent = message
   rosterCsvStatus.style.color = isError ? "#b42318" : "#166534"
+}
+
+function setAddStudentStatus(message, isError = false) {
+  if (!addStudentStatus) return
+  clearTimeout(addStudentStatusTimer)
+  addStudentStatus.textContent = message
+  addStudentStatus.style.color = isError ? "#b42318" : "#166534"
+  if (!message) return
+  addStudentStatusTimer = setTimeout(() => {
+    addStudentStatus.textContent = ""
+  }, 2500)
 }
 
 function getRosterFilterValue() {
@@ -359,11 +372,14 @@ a.listen("#addNewClass", "click", addClass)
 
 a.listen("#addNewStudent", "click", async function () {
   const formData = new FormData()
-  var fname = a.qs("#fname").value.trim()
-  var lname = a.qs("#lname").value.trim()
+  var firstNameInput = a.qs("#fname")
+  var lastNameInput = a.qs("#lname")
+  var fname = firstNameInput.value.trim()
+  var lname = lastNameInput.value.trim()
   var className = getSelectedClass()
   if (!fname && !lname) return
   if (!className || className === "All Students") {
+    setAddStudentStatus("")
     alert("Choose a class code before adding a student.")
     return
   }
@@ -378,9 +394,16 @@ a.listen("#addNewStudent", "click", async function () {
       body: formData,
     })
   ).json()
+  if (data.status !== "success") {
+    setAddStudentStatus(data.message || "Unable to add student.", true)
+    return
+  }
   var id = data?.id
   log(fname, lname, id, false, data)
   newNode(fname, lname, id, false, data.class_name)
+  firstNameInput.value = ""
+  lastNameInput.value = ""
+  setAddStudentStatus("Student added.")
 })
 
 async function loadRosterStudents() {
